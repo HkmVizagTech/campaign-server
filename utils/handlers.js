@@ -16,5 +16,11 @@ export const errorHandler = (err, req, res, next) => {
     return response(res, 400, "Duplicate Value");
   }
 
+  if (err.name === "ValidationError") {
+    const messages = Object.values(err.errors).map((e) => e.message);
+
+    return response(res, 400, messages.join(", "));
+  }
+
   return response(res, 500, "Internal Server Error");
 };

@@ -5,6 +5,7 @@ import Media from "../models/media.model.js";
 import Campaigner from "../models/campaigner.model.js";
 import { getSignedImageUrl, uploadToGCS } from "../utils/GCS.js";
 import TempleDevote from "../models/templeDevote.model.js";
+import { attachImageUrl } from "../utils/attachImageUrls.js";
 
 export const createCampaignerService = async (req) => {
   const {
@@ -129,5 +130,59 @@ export const createCampaignerService = async (req) => {
         url: imageUrl,
       },
     },
+  };
+};
+
+export const getCampaignerService = async (req) => {
+  const campId = req.params.campaignId;
+  const page = parseInt(req.query.page) || 1;
+  const pageSize = parseInt(req.query.pageSize) || 12;
+  const skip = (page - 1) * pageSize;
+  const status = req.query.status;
+
+  if (!mongoose.isValidObjectId(campId)) {
+    throw new AppError(`Invalid campaginId: ${campId}`);
+  }
+
+  const campaign = await Campaign.findOne({
+    _id: campId,
+    status,
+  });
+
+  if (!campaign) {
+    throw new AppError(`Campaign not found`, 404);
+  }
+
+  const obj = {
+    campaignId: campId,
+    status: "active",
+  };
+
+  if (req.query.search) {
+    obj.name = {
+      $regex: req.query.search,
+      $options: "i",
+    };
+  }
+
+  const campaigners = await Campaigner.find(obj)
+    .populate("templeDevoteInTouch")
+    .populate("campaignId")
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(pageSize)
+    .lean();
+
+  const campaignersWithImages = await attachImageUrl(campaigners);
+  const totalCampaigners = await Campaigner.countDocuments({
+    campaignId: campId,
+    status: "active",
+  });
+
+  return {
+    status: 200,
+    message: "Fetched campaigners successfully.",
+    campaigners: campaignersWithImages,
+    count: totalCampaigners,
   };
 };

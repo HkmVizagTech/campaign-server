@@ -5,6 +5,7 @@ const campaignerSchema = new mongoose.Schema(
     name: {
       type: String,
       required: true,
+      index: true,
     },
     image: {
       filename: {

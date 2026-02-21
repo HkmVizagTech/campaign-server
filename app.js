@@ -12,6 +12,9 @@ app.get("/health", (req, res) => {
 import campaignRouter from "./routes/campaign.route.js";
 import campaignerRouter from "./routes/campaigner.route.js";
 import devoteRouter from "./routes/templeDevote.route.js";
+import registerRouter from "./routes/register.route.js";
+
+app.use("/api", registerRouter);
 app.use("/api/campaign", campaignRouter);
 app.use("/api/campaigner", campaignerRouter);
 app.use("/api/devote", devoteRouter);
