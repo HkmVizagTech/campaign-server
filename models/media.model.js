@@ -10,11 +10,7 @@ const mediaSchema = new mongoose.Schema(
     },
 
     image: {
-      url: {
-        type: String,
-        required: true,
-      },
-      publicId: {
+      filename: {
         type: String,
         required: true,
         unique: true,

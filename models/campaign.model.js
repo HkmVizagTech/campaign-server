@@ -4,6 +4,8 @@ const campaignSchema = new mongoose.Schema(
   {
     title: {
       type: String,
+      required: true,
+      trim: true,
     },
     targetAmount: {
       type: Number,
@@ -24,6 +26,12 @@ const campaignSchema = new mongoose.Schema(
     endDate: {
       type: Date,
       required: true,
+      validate: {
+        validator: function (value) {
+          return value > this.startDate;
+        },
+        message: "End date must be after start date",
+      },
     },
 
     status: {
@@ -41,17 +49,16 @@ const campaignSchema = new mongoose.Schema(
 campaignSchema.set("toJSON", { virtuals: true });
 campaignSchema.set("toObject", { virtuals: true });
 
-
 campaignSchema.virtual("percentage").get(function () {
   if (!this.targetAmount || this.targetAmount === 0) return 0;
 
   return Math.min(
     Math.round((this.raisedAmount / this.targetAmount) * 100),
-    100
+    100,
   );
 });
 
-campaignSchema.pre("save", function (next) {
+campaignSchema.methods.calculateStatus = function () {
   const now = new Date();
 
   if (now < this.startDate) {
@@ -61,9 +68,7 @@ campaignSchema.pre("save", function (next) {
   } else {
     this.status = "closed";
   }
-
-  next();
-});
+};
 
 const Campaign = mongoose.model("Campaign", campaignSchema);
 

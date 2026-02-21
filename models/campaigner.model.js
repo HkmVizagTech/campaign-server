@@ -7,11 +7,7 @@ const campaignerSchema = new mongoose.Schema(
       required: true,
     },
     image: {
-      url: {
-        type: String,
-        required: true,
-      },
-      publicId: {
+      filename: {
         type: String,
         required: true,
       },
@@ -24,7 +20,7 @@ const campaignerSchema = new mongoose.Schema(
     },
     phoneNumber: {
       type: String,
-      required: ture,
+      required: true,
     },
     targetAmount: {
       type: Number,
