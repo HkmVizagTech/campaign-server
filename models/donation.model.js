@@ -2,29 +2,36 @@ import mongoose from "mongoose";
 
 const donationSchema = new mongoose.Schema(
   {
-    campaignId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Campaign",
-      required: true,
-      index: true,
-    },
-    campaignerId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Campaigner",
-      required: true,
-      index: true,
-    },
-    fullname: {
+    donorName: {
       type: String,
       required: true,
       trim: true,
+      index: true,
     },
-    email: {
-      type: String,
-    },
-    phoneNumber: {
+    donorPhone: {
       type: String,
       required: true,
+    },
+    donorEmail: {
+      type: String,
+    },
+    amount: {
+      type: Number,
+      required: true,
+    },
+    campaign: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Campaign",
+    },
+    campaigner: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Campaigner",
+    },
+    status: {
+      type: String,
+      enum: ["pending", "success", "failed"],
+      default: "pending",
+      index: true,
     },
     isAnonymous: {
       type: Boolean,
@@ -35,17 +42,15 @@ const donationSchema = new mongoose.Schema(
       uppercase: true,
       match: /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/,
     },
-    amount: {
-      type: Number,
-      required: true,
-    },
-
-    paymentId: String,
-    paymentStatus: {
+    paymentGatewary: {
       type: String,
-      enum: ["pending", "success", "failed", "refunded"],
+      default: "razorypay",
+      immutable: true,
+    },
+    receiptNumber: {
+      type: String,
       required: true,
-      index: true,
+      sparse: true,
     },
   },
   {
