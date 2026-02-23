@@ -1,9 +1,20 @@
 import express from "express";
 import cors from "cors";
 const app = express();
-
+const allowedOrigin = ["http://localhost:5173"];
 app.use(express.json());
-app.use(cors());
+app.use(
+  cors({
+    origin: function (origin, cb) {
+      if (!origin || allowedOrigin.includes(origin)) {
+        cb(null, true);
+      } else {
+        cb(new Error("Not allowed by cors"));
+      }
+    },
+    methods : ["GET","POST","PUT","PATCH","DELETE","OPTIONS"]
+  }),
+);
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
@@ -19,7 +30,7 @@ app.use("/api", registerRouter);
 app.use("/api/campaign", campaignRouter);
 app.use("/api/campaigner", campaignerRouter);
 app.use("/api/devote", devoteRouter);
-app.use("api/donations", donationRouter);
+app.use("/api/donations", donationRouter);
 
 import { errorHandler } from "./utils/handlers.js";
 

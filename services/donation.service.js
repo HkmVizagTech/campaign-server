@@ -15,6 +15,7 @@ export const createDonationOrderService = async (req) => {
     campaignerId,
     email,
     isAnonymous,
+    pan,
   } = req.body;
 
   const requiredFields = [
@@ -74,6 +75,7 @@ export const createDonationOrderService = async (req) => {
     campaign: campaignId,
     campaigner: campaignerId,
     status: "pending",
+    pan,
   });
 
   const order = await razorypay.orders.create({
@@ -92,7 +94,7 @@ export const createDonationOrderService = async (req) => {
   return {
     status: 201,
     message: "Donation order created successfully",
-    res: {
+    resObj: {
       orderId: order.id,
       amount: order.amount,
       currency: order.currency,

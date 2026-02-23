@@ -26,16 +26,20 @@ export const createCampaignService = async (req) => {
   if (isNaN(parsedDate.getTime())) {
     throw new AppError("Start date must be a valid date", 400);
   }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  parsedDate.setHours(0, 0, 0, 0);
 
-  if (parsedDate < new Date()) {
+  if (parsedDate < today) {
     throw new AppError("Start date cannot be in the past", 400);
   }
-
+ 
   const parsedEndDate = new Date(endDate);
 
   if (isNaN(parsedEndDate.getTime())) {
     throw new AppError("End date must be valid date", 400);
   }
+  parsedEndDate.setHours(0, 0, 0, 0);
 
   if (parsedEndDate <= parsedDate) {
     throw new AppError("End date must be greater than Start date", 400);
