@@ -171,10 +171,14 @@ export const getCampaignerService = async (req) => {
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(pageSize)
-    .select("-createdAt -updatedAt")
-    .lean();
+    .select("-createdAt -updatedAt");
 
-  const campaignersWithImages = await attachImageUrl(campaigners);
+  const campaignersPlain = campaigners.map((doc) =>
+    doc.toObject({ virtuals: true }),
+  );
+
+  const campaignersWithImages = await attachImageUrl(campaignersPlain);
+
   const totalCampaigners = await Campaigner.countDocuments({
     campaignId: campId,
     status: "active",
