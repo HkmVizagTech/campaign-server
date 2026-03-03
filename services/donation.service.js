@@ -118,3 +118,71 @@ export const createDonationOrderService = async (req) => {
     },
   };
 };
+
+export const getDonorsService = async (req) => {
+  const { id, campId, search } = req.query;
+  const page = parseInt(req.query.page) || 1;
+  const pageSize = parseInt(req.query.pageSize) || 15;
+
+  let filter = {
+    status: "success",
+  };
+
+  if (id) {
+    if (!mongoose.isValidObjectId(id)) {
+      throw new AppError(`Invalid Id: ${id}`);
+    }
+
+    filter.campaigner = id;
+  }
+
+  if (campId) {
+    if (!mongoose.isValidObjectId(campId)) {
+      throw new AppError(`Invalid Id: ${campId}`);
+    }
+
+    filter.campaign = campId;
+  }
+
+  if (search?.trim()) {
+    const searchRegex = new RegExp(search.trim(), "i");
+
+    filter.$or = [
+      { donorName: searchRegex },
+      { donorPhone: searchRegex },
+      { receiptNumber: searchRegex },
+    ];
+  }
+
+  const skip = (page - 1) * pageSize;
+
+  const donors = await Donation.find(filter)
+    .populate({
+      path: "campaign",
+      select: "-updatedAt",
+    })
+    .populate({
+      path: "campaigner",
+      select: "-createdAt -updatedAt",
+      populate: {
+        path: "templeDevoteInTouch",
+        select: "-createdAt -updatedAt",
+      },
+    })
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(pageSize)
+    .select("-createdAt -updatedAt");
+  const total = await Donation.countDocuments(filter);
+
+  return {
+    status: 200,
+    message: "Donors Fetched successfully",
+    data: donors,
+    pagination: {
+      total,
+      page,
+      pages: Math.ceil(total / pageSize),
+    },
+  };
+};

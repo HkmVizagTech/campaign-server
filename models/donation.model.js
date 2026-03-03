@@ -11,6 +11,7 @@ const donationSchema = new mongoose.Schema(
     donorPhone: {
       type: String,
       required: true,
+      index: true,
     },
     donorEmail: {
       type: String,
@@ -18,6 +19,7 @@ const donationSchema = new mongoose.Schema(
     amount: {
       type: Number,
       required: true,
+      index: true,
     },
     campaign: {
       type: mongoose.Schema.Types.ObjectId,
@@ -46,6 +48,7 @@ const donationSchema = new mongoose.Schema(
     seva: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Seva",
+      index: true,
     },
     pan: {
       type: String,
@@ -54,7 +57,7 @@ const donationSchema = new mongoose.Schema(
     },
     paymentGateway: {
       type: String,
-      default: "razorypay",
+      default: "razorpay",
       immutable: true,
     },
     receiptNumber: {

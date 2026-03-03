@@ -3,6 +3,7 @@ import Payment from "../models/payment.model.js";
 import Donation from "../models/donation.model.js";
 import Campaigner from "../models/campaigner.model.js";
 import Campaign from "../models/campaign.model.js";
+import { generateReceiptNumber } from "../utils/utils.js";
 
 export const razorpayWebhookService = async (req, res) => {
   try {
@@ -39,10 +40,10 @@ export const razorpayWebhookService = async (req, res) => {
       paymentDoc.status = "captured";
       paymentDoc.rawResponse = payment;
       await paymentDoc.save();
-
+      const receiptNumber = generateReceiptNumber();
       const updatedDonation = await Donation.findOneAndUpdate(
         { _id: donationId, status: { $ne: "success" } },
-        { status: "success" },
+        { status: "success", receiptNumber },
         { returnDocument: "after" },
       );
 

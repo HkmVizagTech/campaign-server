@@ -3,6 +3,8 @@ import Payment from "../models/payment.model.js";
 import Donation from "../models/donation.model.js";
 import Campaigner from "../models/campaigner.model.js";
 import Campaign from "../models/campaign.model.js";
+import { generateReceiptNumber } from "../utils/utils.js";
+import { AppError } from "../utils/AppError.js";
 
 export const verifyPaymentService = async (req) => {
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =
@@ -39,13 +41,13 @@ export const verifyPaymentService = async (req) => {
   paymentDoc.gatewaySignature = razorpay_signature;
   paymentDoc.status = "captured";
   await paymentDoc.save();
-
+  const receiptNumber = generateReceiptNumber();
   const updatedDonation = await Donation.findOneAndUpdate(
     {
       _id: paymentDoc.donation,
       status: { $ne: "success" },
     },
-    { status: "success" },
+    { status: "success", receiptNumber },
     { returnDocument: "after" },
   );
 
