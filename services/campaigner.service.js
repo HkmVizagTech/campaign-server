@@ -140,6 +140,7 @@ export const getCampaignerService = async (req) => {
   const pageSize = parseInt(req.query.pageSize) || 12;
   const skip = (page - 1) * pageSize;
   const status = req.query.status;
+  const campStatus = req.query.campStatus;
   const search = req.query.search;
   const sort = req.query.sort;
   let sortOptions = { raisedAmount: -1 };
@@ -154,7 +155,7 @@ export const getCampaignerService = async (req) => {
 
   const campaign = await Campaign.findOne({
     _id: campId,
-    status,
+    status: campStatus,
   });
 
   if (!campaign) {
@@ -180,6 +181,10 @@ export const getCampaignerService = async (req) => {
     sortOptions = { targetAmount: 1 };
   } else if (sort === "target_desc") {
     sortOptions = { targetAmount: -1 };
+  } else if (sort === "createdAt_asc") {
+    sortOptions = { createdAt: 1 };
+  } else if (sort === "created_desc") {
+    sortOptions = { createdAt: -1 };
   }
 
   const campaigners = await Campaigner.find(options)
