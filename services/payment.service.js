@@ -47,7 +47,7 @@ export const verifyPaymentService = async (req) => {
       _id: paymentDoc.donation,
       status: { $ne: "success" },
     },
-    { status: "success", receiptNumber },
+    { status: "success", receiptNumber, gatewayPaymentId: razorpay_payment_id },
     { returnDocument: "after" },
   );
 

@@ -43,7 +43,7 @@ export const razorpayWebhookService = async (req, res) => {
       const receiptNumber = generateReceiptNumber();
       const updatedDonation = await Donation.findOneAndUpdate(
         { _id: donationId, status: { $ne: "success" } },
-        { status: "success", receiptNumber },
+        { status: "success", receiptNumber, gatewayPaymentId: payment.id },
         { returnDocument: "after" },
       );
 

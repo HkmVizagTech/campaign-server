@@ -1,5 +1,6 @@
 import {
   createDonationOrderService,
+  getDonorDetailsService,
   getDonorsService,
 } from "../services/donation.service.js";
 import { asyncHandlers } from "../utils/handlers.js";
@@ -15,4 +16,10 @@ export const getDonors = asyncHandlers(async (req, res) => {
   const { status, message, data, pagination } = await getDonorsService(req);
 
   response(res, status, message, { data, pagination });
+});
+
+export const getDonorDetails = asyncHandlers(async (req, res) => {
+  const { status, message, data } = await getDonorDetailsService(req);
+
+  response(res, status, message, data);
 });

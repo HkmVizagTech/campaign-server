@@ -43,7 +43,7 @@ const campaignerSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["active", "close", "pending", "approved"],
+      enum: ["active", "close", "pending", "approved", "reject"],
       index: true,
     },
   },

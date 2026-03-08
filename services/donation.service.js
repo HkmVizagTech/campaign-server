@@ -18,7 +18,7 @@ export const createDonationOrderService = async (req) => {
     pan,
     sevaId,
     address,
-    pincode,
+    prasadam,
   } = req.body;
 
   const requiredFields = [
@@ -60,6 +60,14 @@ export const createDonationOrderService = async (req) => {
     }
   }
 
+  if (address && Object.keys(address).length > 0) {
+    const requiredFields = ["fullAddress", "pincode", "city", "state"];
+    const missingField = requiredFields.find((field) => !address[field]);
+    if (missingField) {
+      throw new AppError(`${missingField} is required`, 400);
+    }
+  }
+
   const isExistCampaign = await Campaign.findOne({
     _id: campaignId,
     status: "active",
@@ -86,8 +94,8 @@ export const createDonationOrderService = async (req) => {
     status: "pending",
     seva: sevaId,
     pan,
-    pincode,
     address,
+    prasadam,
   });
 
   const order = await razorpay.orders.create({
@@ -190,4 +198,39 @@ export const getDonorsService = async (req) => {
     },
   };
 };
-  
+
+export const getDonorDetailsService = async (req) => {
+  const donationId = req?.params?.donationId;
+
+  if (!donationId) {
+    throw new AppError("Donation Id is required", 400);
+  }
+
+  if (!mongoose.isValidObjectId(donationId)) {
+    throw new AppError(`Invalid DonationId: ${donationId}`, 400);
+  }
+
+  const details = await Donation.findById(donationId).populate({
+    path : "seva",
+    select : "-createdAt -updatedAt"
+  });
+
+  if (!details) {
+    throw new AppError("No donation found", 404);
+  }
+
+  const isEligibleForPrasadam =
+    details.amount >= 999 &&
+    details.prasadam &&
+    details.address &&
+    Object.keys(details.address).length > 0;
+
+  return {
+    status: 200,
+    message: "Donation details fetched successfully",
+    data: {
+      ...details.toObject(),
+      isEligibleForPrasadam,
+    },
+  };
+};

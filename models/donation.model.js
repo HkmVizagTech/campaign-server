@@ -40,10 +40,14 @@ const donationSchema = new mongoose.Schema(
       default: false,
     },
     address: {
-      type: String,
+      pincode: String,
+      city: String,
+      fullAddress: String,
+      state: String,
     },
-    pincode: {
-      type: String,
+    prasadam: {
+      type: Boolean,
+      default: false,
     },
     seva: {
       type: mongoose.Schema.Types.ObjectId,
@@ -61,6 +65,11 @@ const donationSchema = new mongoose.Schema(
       immutable: true,
     },
     receiptNumber: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+    gatewayPaymentId: {
       type: String,
       unique: true,
       sparse: true,
