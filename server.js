@@ -7,7 +7,7 @@ const port = process.env.PORT || 8080;
 
 connectToDB()
   .then(() => {
-    app.listen(port, () => {
+    app.listen(port, "0.0.0.0", () => {
       console.log(`Port is connected to ${port}`);
     });
   })
