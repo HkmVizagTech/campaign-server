@@ -3,7 +3,7 @@ import { connectToDB } from "./config/DBConnection.js";
 import app from "./app.js";
 dotenv.config();
 
-const port = process.env.PORT || 2345;
+const port = process.env.PORT || 8080;
 
 connectToDB()
   .then(() => {
