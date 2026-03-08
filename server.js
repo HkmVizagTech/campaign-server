@@ -7,10 +7,11 @@ const port = process.env.PORT || 8080;
 
 connectToDB()
   .then(() => {
-    app.listen(port, "0.0.0.0", () => {
+    app.listen(port, () => {
       console.log(`Port is connected to ${port}`);
     });
   })
   .catch((error) => {
     console.log(`DB connection failed: ${error}`);
+    process.exit(1);
   });
