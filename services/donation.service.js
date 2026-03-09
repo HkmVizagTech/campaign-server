@@ -131,7 +131,7 @@ export const getDonorsService = async (req) => {
   const { id, campId, search, sevaId } = req.query;
   const page = parseInt(req.query.page) || 1;
   const pageSize = parseInt(req.query.pageSize) || 15;
-
+  const isPrasadam = req.query.isPrasadam === "true";
   let filter = {
     status: "success",
   };
@@ -164,6 +164,11 @@ export const getDonorsService = async (req) => {
 
   if (sevaId) {
     filter.seva = sevaId;
+  }
+
+  if (isPrasadam) {
+    filter.prasadam = true;
+    filter.amount = { $gte: 999 };
   }
 
   const skip = (page - 1) * pageSize;
@@ -211,8 +216,8 @@ export const getDonorDetailsService = async (req) => {
   }
 
   const details = await Donation.findById(donationId).populate({
-    path : "seva",
-    select : "-createdAt -updatedAt"
+    path: "seva",
+    select: "-createdAt -updatedAt",
   });
 
   if (!details) {
