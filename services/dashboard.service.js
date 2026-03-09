@@ -3,11 +3,15 @@ import Campaigner from "../models/campaigner.model.js";
 import Donation from "../models/donation.model.js";
 
 export const cardSummaryService = async () => {
-  const [campaign, totalDonations, activeCampaigners] = await Promise.all([
-    Campaign.findOne({ status: "active" }).select("targetAmount raisedAmount"),
-    Donation.countDocuments({ status: "success" }),
-    Campaigner.countDocuments({ status: "active" }),
-  ]);
+  const [campaign, totalDonations, activeCampaigners, pendingCampaigners] =
+    await Promise.all([
+      Campaign.findOne({ status: "active" }).select(
+        "targetAmount raisedAmount",
+      ),
+      Donation.countDocuments({ status: "success" }),
+      Campaigner.countDocuments({ status: "active" }),
+      Campaigner.countDocuments({ status: "pending" }),
+    ]);
 
   return {
     status: 200,
@@ -17,6 +21,7 @@ export const cardSummaryService = async () => {
       totalRaised: campaign?.raisedAmount || 0,
       totalDonations,
       activeCampaigners,
+      pendingCampaigners,
     },
   };
 };
