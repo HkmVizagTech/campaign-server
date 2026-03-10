@@ -7,6 +7,11 @@ const campaignerSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    slug: {
+      type: String,
+      unique: true,
+      index: true,
+    },
     image: {
       filename: {
         type: String,

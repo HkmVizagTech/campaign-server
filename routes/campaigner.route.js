@@ -29,10 +29,10 @@ campaignerRouter.post(
 // Dynamic Routes
 campaignerRouter.get("/topdonors/:campaignId", getTopDonors);
 campaignerRouter.get(
-  "/latestDonors/:campaignId/:campaignerId",
+  "/latestDonors/:campaignId/:slug",
   getLastestDonorofCampaigner,
 );
-campaignerRouter.get("/details/:campaignerId/", getSingleCampaigner);
+campaignerRouter.get("/details/:slugId/", getSingleCampaigner);
 campaignerRouter.get("/:campaignId", getCampaigners);
 campaignerRouter.put("/:id", verifyToken,onlyAdmin, updateCampaigner);
 campaignerRouter.delete("/:id", verifyToken,onlyAdmin, deleteCampaigner);

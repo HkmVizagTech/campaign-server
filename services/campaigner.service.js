@@ -6,6 +6,7 @@ import Campaigner from "../models/campaigner.model.js";
 import { deleteFromGCS, uploadToGCS } from "../utils/GCS.js";
 import TempleDevote from "../models/templeDevote.model.js";
 import Donation from "../models/donation.model.js";
+import slugify from "slugify";
 
 export const createCampaignerService = async (req) => {
   const {
@@ -111,8 +112,20 @@ export const createCampaignerService = async (req) => {
       url: media.image.url,
     };
   }
+
+  const slug = slugify(name, {
+    lower: true,
+    strict: true,
+    trim: true,
+  });
+  const existingSlug = await Campaigner.findOne({ slug });
+
+  if (existingSlug) {
+    throw new AppError("Campaigner with this name already exists", 409);
+  }
   const newCampaigner = await Campaigner.create({
     name,
+    slug,
     phoneNumber,
     campaignId,
     templeDevoteInTouch,
@@ -224,17 +237,13 @@ export const getCampaignerService = async (req) => {
 };
 
 export const getSingleCampaignerService = async (req) => {
-  const { campaignerId } = req.params;
+  const { slugId } = req.params;
 
-  if (!campaignerId) {
+  if (!slugId) {
     throw new AppError("campaignerId is required", 400);
   }
 
-  if (!mongoose.isValidObjectId(campaignerId)) {
-    throw new AppError(`Invalid campaignerId: ${campaignerId}`, 400);
-  }
-
-  const campaginer = await Campaigner.findById(campaignerId)
+  const campaginer = await Campaigner.findOne({ slug: slugId })
     .populate("templeDevoteInTouch", "-createdAt -updatedAt")
     .populate("campaignId", "-createdAt -updatedAt");
 
@@ -243,7 +252,7 @@ export const getSingleCampaignerService = async (req) => {
   }
 
   const donationCount = await Donation.countDocuments({
-    campaigner: campaignerId,
+    campaigner: campaginer._id,
     status: "success",
   });
 
@@ -299,21 +308,18 @@ export const getTopDonorsService = async (req) => {
 };
 
 export const getLastestDonorofCampaignerService = async (req) => {
-  const { campaignId, campaignerId } = req.params;
+  const { campaignId, slug } = req.params;
 
   if (!campaignId) {
     throw new AppError(`CampaginId is required`, 400);
   }
 
-  if (!campaignerId) {
-    throw new AppError(`CampaginerId is required`, 400);
+  if (!slug) {
+    throw new AppError(`Slug is required`, 400);
   }
 
   if (!mongoose.isValidObjectId(campaignId)) {
     throw new AppError(`Invalid CampaignId: ${campaignId}`, 400);
-  }
-  if (!mongoose.isValidObjectId(campaignerId)) {
-    throw new AppError(`Invalid CampaignerId: ${campaignerId}`, 400);
   }
 
   const campaign = await Campaign.findOne({
@@ -326,7 +332,7 @@ export const getLastestDonorofCampaignerService = async (req) => {
   }
 
   const campaigner = await Campaigner.findOne({
-    _id: campaignerId,
+    slug: slug,
     campaignId,
   });
 
@@ -336,7 +342,7 @@ export const getLastestDonorofCampaignerService = async (req) => {
 
   const donations = await Donation.find({
     campaign: campaignId,
-    campaigner: campaignerId,
+    campaigner: campaigner._id,
     status: "success",
   })
     .sort({ createdAt: -1 })
