@@ -20,18 +20,24 @@ export const createTempleDevoteService = async (req) => {
     throw new AppError(`Devote Mail is required`, 400);
   }
 
-  const isExist = await TempleDevote.findOne({ email });
+  const normalizeEmail = email.trim().toLowerCase();
+
+  const isExist = await TempleDevote.findOne({ email: normalizeEmail });
 
   if (isExist) {
     throw new AppError(`Devote with same mail is already exist`, 400);
   }
 
+  const userExists = await Register.findOne({ email: normalizeEmail });
+  if (userExists) {
+    throw new AppError(`User with same email already exists`, 400);
+  }
   const salt = await bcrypt.genSalt(10);
   const hashPassword = await bcrypt.hash(phoneNumber, salt);
 
   const newRegistration = await Register.create({
     name,
-    email,
+    email: normalizeEmail,
     password: hashPassword,
     role: "devotee",
   });
@@ -39,7 +45,7 @@ export const createTempleDevoteService = async (req) => {
   const newDevote = await TempleDevote.create({
     devoteName: name,
     phoneNumber,
-    email,
+    email: normalizeEmail,
     userId: newRegistration._id,
   });
 
