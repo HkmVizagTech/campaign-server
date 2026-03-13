@@ -267,6 +267,7 @@ export const getCampaignerService = async (req) => {
                   $push: {
                     name: "$donorName",
                     amount: "$amount",
+                    isAnonymous: "$isAnonymous",
                   },
                 },
               },
@@ -363,7 +364,7 @@ export const getTopDonorsService = async (req) => {
   })
     .sort({ amount: -1 })
     .limit(5)
-    .select("donorName donorPhone donorEmail amount createdAt");
+    .select("donorName donorPhone donorEmail amount createdAt isAnonymous");
 
   if (!topDonors.length) {
     return {
@@ -420,7 +421,7 @@ export const getLastestDonorofCampaignerService = async (req) => {
   })
     .sort({ createdAt: -1 })
     .limit(10)
-    .select("donorName donorPhone donorEmail amount createdAt");
+    .select("donorName donorPhone donorEmail amount createdAt isAnonymous");
 
   return {
     status: 200,

@@ -82,7 +82,7 @@ export const createDonationOrderService = async (req) => {
   }
 
   const createDonation = await Donation.create({
-    donorName: isAnonymous ? "Devote" : donorName,
+    donorName: donorName,
     donorPhone,
     amount: Number(amount),
     donorEmail: email,

@@ -11,7 +11,6 @@ import {
   sendRecieptWhatsapp,
   sendWhatsappMessage,
 } from "./whatsapp.service.js";
-import TempleDevote from "../models/templeDevote.model.js";
 
 export const razorpayWebhookService = async (req, res) => {
   try {
