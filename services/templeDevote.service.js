@@ -123,3 +123,81 @@ export const deleteDevoteService = async (req) => {
     data: deletedDevote,
   };
 };
+
+export const updateDevoteeService = async (req) => {
+  const id = req.params.id;
+
+  if (!id) {
+    throw new AppError(`id is required`, 400);
+  }
+
+  if (!mongoose.isValidObjectId(id)) {
+    throw new AppError(`Invalid Id: ${id}`, 400);
+  }
+
+  const devotee = await TempleDevote.findById(id);
+
+  if (!devotee) {
+    throw new AppError("Devotee not found", 404);
+  }
+
+  const oldPhoneNumber = devotee.phoneNumber;
+
+  const updateData = Object.fromEntries(
+    Object.entries(req.body).filter(([_, value]) => value !== undefined),
+  );
+
+  delete updateData._id;
+  delete updateData.email;
+
+  const updatedDevotee = await TempleDevote.findByIdAndUpdate(
+    id,
+    { $set: updateData },
+    { returnDocument: "after", runValidators: true },
+  );
+
+  const register = await Register.findById(updatedDevotee.userId);
+
+  if (
+    register &&
+    !register.isPasswordChanged &&
+    updateData.phoneNumber &&
+    updateData.phoneNumber !== oldPhoneNumber
+  ) {
+    const salt = await bcrypt.genSalt(10);
+    const hashPassword = await bcrypt.hash(updateData.phoneNumber, salt);
+
+    register.password = hashPassword;
+    await register.save();
+  }
+
+  return {
+    status: 200,
+    message: "Devote Updated successfully",
+    data: updatedDevotee,
+  };
+};
+
+export const singleDevoteeService = async (req) => {
+  const id = req.params.id;
+
+  if (!id) {
+    throw new AppError(`id is required`, 400);
+  }
+
+  if (!mongoose.isValidObjectId(id)) {
+    throw new AppError(`Invalid Id: ${id}`, 400);
+  }
+
+  const devotee = await TempleDevote.findById(id);
+
+  if (!devotee) {
+    throw new AppError("Devotee not found", 404);
+  }
+
+  return {
+    status: 200,
+    message: "Single Devotee Details fetched",
+    data: devotee,
+  };
+};
