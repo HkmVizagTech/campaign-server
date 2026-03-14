@@ -3,7 +3,7 @@ import { AppError } from "../utils/AppError.js";
 import Campaign from "../models/campaign.model.js";
 import Media from "../models/media.model.js";
 import Campaigner from "../models/campaigner.model.js";
-import { deleteFromGCS, uploadToGCS } from "../utils/GCS.js";
+import { uploadToGCS } from "../utils/GCS.js";
 import TempleDevote from "../models/templeDevote.model.js";
 import Donation from "../models/donation.model.js";
 import slugify from "slugify";
@@ -235,7 +235,7 @@ export const getCampaignerService = async (req) => {
     sortOptions = { targetAmount: -1, _id: -1 };
   } else if (sort === "createdAt_asc") {
     sortOptions = { createdAt: 1, _id: 1 };
-  } else if (sort === "created_desc") {
+  } else if (sort === "createdAt_desc") {
     sortOptions = { createdAt: -1, _id: -1 };
   }
 
