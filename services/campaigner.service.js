@@ -538,7 +538,7 @@ export const deleteCampaignerService = async (req) => {
     );
   }
 
-  await Campaigner.deleteOne();
+  await campaigner.deleteOne();
 
   return {
     status: 200,
