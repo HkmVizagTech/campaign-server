@@ -229,7 +229,6 @@ export const getDonorsService = async (req) => {
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(pageSize)
-    .select("-createdAt -updatedAt");
   const total = await Donation.countDocuments(filter);
 
   return {

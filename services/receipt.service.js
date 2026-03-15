@@ -47,9 +47,6 @@ export const generateReceiptBuffer = async (donationId) => {
   const pan = donationDetails?.pan ? donationDetails?.pan : "---";
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const form = pdfDoc.getForm();
-  form.getFields().forEach((field) => {
-    console.log(field.constructor.name, field.getName());
-  });
   form.getTextField("name").setText(donationDetails.donorName.toUpperCase());
   form.getTextField("phoneNum").setText(donationDetails.donorPhone);
   form.getTextField("inWords").setText(amountWords);
