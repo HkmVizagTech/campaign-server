@@ -13,11 +13,11 @@ const campaignerSchema = new mongoose.Schema(
     image: {
       filename: {
         type: String,
-        required: true,
+        // required: true,
       },
       url: {
         type: String,
-        required: true,
+        // required: true,
       },
     },
     campaignId: {

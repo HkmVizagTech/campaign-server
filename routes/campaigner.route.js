@@ -39,6 +39,7 @@ campaignerRouter.patch(
   "/:id",
   verifyToken,
   authorizeRole("admin", "devotee"),
+  upload.single("image"),
   updateCampaigner,
 );
 campaignerRouter.delete(

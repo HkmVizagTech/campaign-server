@@ -491,6 +491,7 @@ export const updateCampaignerService = async (req) => {
   if (!mongoose.isValidObjectId(id)) {
     throw new AppError(`Invalid Id: ${id}`, 400);
   }
+
   const campaigner = await Campaigner.findById(id);
 
   if (!campaigner) {
@@ -499,12 +500,79 @@ export const updateCampaignerService = async (req) => {
 
   const previousStatus = campaigner.status;
 
+  // Get update data from req.body (text fields)
   const updateData = Object.fromEntries(
     Object.entries(req.body).filter(([_, value]) => value !== undefined),
   );
+
+  // Remove fields that shouldn't be updated directly
   delete updateData.raisedAmount;
   delete updateData.campaignId;
-  if (updateData.name) {
+  delete updateData.slug; // Will be regenerated if name changes
+
+  // Handle image update if a new file is uploaded
+  if (req.file) {
+    console.log("📸 New image uploaded for campaigner:", id);
+
+    // Upload new image to GCS
+    const uploadResult = await uploadToGCS(req.file);
+
+    if (!uploadResult.filename || !uploadResult.url) {
+      throw new AppError(`Image upload failed`, 500);
+    }
+
+    // Delete old image from GCS if exists
+    if (campaigner.image && campaigner.image.filename) {
+      try {
+        await deleteFromGCS(campaigner.image.filename);
+        console.log(
+          "✅ Old image deleted from GCS:",
+          campaigner.image.filename,
+        );
+      } catch (error) {
+        console.error("Failed to delete old image from GCS:", error.message);
+        // Don't throw error - we still want to update with new image
+      }
+    }
+
+    // Update with new image
+    updateData.image = {
+      filename: uploadResult.filename,
+      url: uploadResult.url,
+    };
+
+    // Also create a media record if needed
+    const media = await Media.create({
+      name: campaigner.name,
+      image: {
+        filename: uploadResult.filename,
+        url: uploadResult.url,
+      },
+    });
+
+    console.log("✅ New image uploaded and media record created");
+  }
+
+  // Handle image removal (if client wants to delete the image)
+  if (req.body.removeImage === "true") {
+    console.log("🗑️ Removing image for campaigner:", id);
+
+    // Delete image from GCS if exists
+    if (campaigner.image && campaigner.image.filename) {
+      try {
+        await deleteFromGCS(campaigner.image.filename);
+        console.log("✅ Image deleted from GCS");
+      } catch (error) {
+        console.error("Failed to delete image from GCS:", error.message);
+      }
+    }
+
+    // Remove image from campaigner
+    updateData.image = null;
+  }
+
+  // Handle name change - update slug
+  if (updateData.name && updateData.name !== campaigner.name) {
     const slug = slugify(updateData.name, {
       lower: true,
       strict: true,
@@ -523,10 +591,23 @@ export const updateCampaignerService = async (req) => {
     updateData.slug = slug;
   }
 
+  // Remove empty fields
+  Object.keys(updateData).forEach((key) => {
+    if (
+      updateData[key] === undefined ||
+      updateData[key] === null ||
+      updateData[key] === ""
+    ) {
+      delete updateData[key];
+    }
+  });
+
+  // Check if there's anything to update
   if (Object.keys(updateData).length === 0) {
     throw new AppError("No fields provided for update", 400);
   }
 
+  // Handle status transition from pending to active
   const isPendingToActiveTransition =
     previousStatus === "pending" && updateData.status === "active";
 
@@ -534,6 +615,7 @@ export const updateCampaignerService = async (req) => {
     updateData.approvedBy = user.id;
   }
 
+  // Update the campaigner
   const updatedCampaigner = await Campaigner.findByIdAndUpdate(
     id,
     { $set: updateData },
@@ -541,8 +623,13 @@ export const updateCampaignerService = async (req) => {
       returnDocument: "after",
       runValidators: true,
     },
-  );
+  )
+    .populate("templeDevoteInTouch", "-createdAt -updatedAt")
+    .populate("campaignId", "-createdAt -updatedAt")
+    .populate("createdBy", "name email role")
+    .populate("approvedBy", "name email role");
 
+  // Send WhatsApp notification if status changed to active
   if (isPendingToActiveTransition) {
     const phone = updatedCampaigner.phoneNumber.replace(/\D/g, "");
     const campaignerPhoneNumber = phone.startsWith("91") ? phone : `91${phone}`;
@@ -561,10 +648,12 @@ export const updateCampaignerService = async (req) => {
         "campaigner_registration_link_success",
         params,
       );
+      console.log("✅ WhatsApp notification sent");
     } catch (error) {
       console.error("WhatsApp sending failed:", error.message);
     }
   }
+
   return {
     status: 200,
     message: "Updated successfully",
