@@ -15,6 +15,7 @@ const allowedOrigin = [
   "http://localhost:5173",
   "https://iskcon-campaginer-vizag-client.vercel.app",
   "https://campaigns.harekrishnavizag.org",
+  "https://campaigner-client-y2d2.vercel.app/",
 ];
 import webhookRouter from "./routes/webhook.route.js";
 app.use(
