@@ -7,7 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "reconcile:donation": "node scripts/reconcileCapturedDonation.js"
+    "reconcile:donation": "node scripts/reconcileCapturedDonation.js",
+    "resend:updated-receipts": "node scripts/resendUpdatedReceipts.js"
   },
   "keywords": [],
   "author": "",
@@ -25,6 +26,7 @@
     "dotenv": "^17.3.1",
     "ejs": "^4.0.1",
     "express": "^5.2.1",
+    "fontkit": "^2.0.4",
     "form-data": "^4.0.5",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.2.1",
