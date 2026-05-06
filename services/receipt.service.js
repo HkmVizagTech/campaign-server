@@ -7,7 +7,23 @@ import { PDFDocument, StandardFonts } from "pdf-lib";
 import numToWord from "number-to-words";
 import path from "path";
 
-const DEFAULT_RECEIPT_FONT_PATH = "/Library/Fonts/Arial Unicode.ttf";
+const resolveFontPath = (fontPath) => {
+  if (!fontPath) {
+    return null;
+  }
+
+  return path.isAbsolute(fontPath)
+    ? fontPath
+    : path.resolve(process.cwd(), fontPath);
+};
+
+const DEFAULT_RECEIPT_FONT_PATHS = [
+  resolveFontPath(process.env.RECEIPT_FONT_PATH),
+  path.resolve(process.cwd(), "assets/fonts/NotoSansTelugu-Regular.ttf"),
+  "/Library/Fonts/Arial Unicode.ttf",
+  "/usr/share/fonts/truetype/noto/NotoSansTelugu-Regular.ttf",
+  "/usr/share/fonts/opentype/noto/NotoSansTelugu-Regular.ttf",
+].filter(Boolean);
 
 const sanitizePdfText = (value, fieldName) => {
   const text = value == null ? "" : String(value);
@@ -26,22 +42,37 @@ const sanitizePdfText = (value, fieldName) => {
 };
 
 const getReceiptFont = async (pdfDoc) => {
-  const fontPath =
-    process.env.RECEIPT_FONT_PATH || DEFAULT_RECEIPT_FONT_PATH;
+  pdfDoc.registerFontkit(fontkit);
 
-  if (fs.existsSync(fontPath)) {
-    pdfDoc.registerFontkit(fontkit);
-    const fontBytes = fs.readFileSync(fontPath);
+  for (const fontPath of DEFAULT_RECEIPT_FONT_PATHS) {
+    if (!fs.existsSync(fontPath)) {
+      continue;
+    }
 
-    return {
-      font: await pdfDoc.embedFont(fontBytes),
-      sanitize: false,
-      fontPath,
-    };
+    try {
+      if (path.extname(fontPath).toLowerCase() === ".ttc") {
+        console.warn(
+          `Skipping receipt font collection ${fontPath}. Use a .ttf or .otf font file instead.`,
+        );
+        continue;
+      }
+
+      const fontBytes = fs.readFileSync(fontPath);
+
+      return {
+        font: await pdfDoc.embedFont(fontBytes),
+        sanitize: false,
+        fontPath,
+      };
+    } catch (error) {
+      console.warn(
+        `Failed to embed receipt font at ${fontPath}: ${error.message}`,
+      );
+    }
   }
 
   console.warn(
-    `Receipt font not found at ${fontPath}. Falling back to Helvetica and text sanitization.`,
+    "No Unicode receipt font found. Falling back to Helvetica and text sanitization.",
   );
 
   return {
