@@ -1,4 +1,4 @@
-import { getSignedImageUrl } from "./GCS.js";
+import { getSignedImageUrl } from "./R2.js";
 
 export const attachImageUrl = async (docs) => {
   return Promise.all(

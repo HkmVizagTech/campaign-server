@@ -3,7 +3,7 @@ import { AppError } from "../utils/AppError.js";
 import Campaign from "../models/campaign.model.js";
 import Media from "../models/media.model.js";
 import Campaigner from "../models/campaigner.model.js";
-import { deleteFromGCS, uploadToGCS } from "../utils/GCS.js";
+import { uploadToR2, deleteFromR2, getSignedImageUrl } from "../utils/R2.js";
 import TempleDevote from "../models/templeDevote.model.js";
 import Donation from "../models/donation.model.js";
 import slugify from "slugify";
@@ -113,7 +113,7 @@ export const createCampaignerService = async (req) => {
       throw new AppError(`Image File is required`, 400);
     }
 
-    const uploadResult = await uploadToGCS(req.file);
+    const uploadResult = await uploadToR2(req.file);
 
     if (!uploadResult.filename || !uploadResult.url) {
       throw new AppError(`Image upload failed`, 500);
@@ -514,23 +514,20 @@ export const updateCampaignerService = async (req) => {
   if (req.file) {
     console.log("📸 New image uploaded for campaigner:", id);
 
-    // Upload new image to GCS
-    const uploadResult = await uploadToGCS(req.file);
+    // Upload new image to R2
+    const uploadResult = await uploadToR2(req.file);
 
     if (!uploadResult.filename || !uploadResult.url) {
       throw new AppError(`Image upload failed`, 500);
     }
 
-    // Delete old image from GCS if exists
+    // Delete old image from R2 if exists
     if (campaigner.image && campaigner.image.filename) {
       try {
-        await deleteFromGCS(campaigner.image.filename);
-        console.log(
-          "✅ Old image deleted from GCS:",
-          campaigner.image.filename,
-        );
+        await deleteFromR2(campaigner.image.filename);
+        console.log("✅ Old image deleted from R2:", campaigner.image.filename);
       } catch (error) {
-        console.error("Failed to delete old image from GCS:", error.message);
+        console.error("Failed to delete old image from R2:", error.message);
         // Don't throw error - we still want to update with new image
       }
     }
@@ -541,8 +538,8 @@ export const updateCampaignerService = async (req) => {
       url: uploadResult.url,
     };
 
-    // Also create a media record if needed
-    const media = await Media.create({
+    // Also create a media record
+    await Media.create({
       name: campaigner.name,
       image: {
         filename: uploadResult.filename,
@@ -550,20 +547,20 @@ export const updateCampaignerService = async (req) => {
       },
     });
 
-    console.log("✅ New image uploaded and media record created");
+    console.log("✅ New image uploaded to R2 and media record created");
   }
 
   // Handle image removal (if client wants to delete the image)
   if (req.body.removeImage === "true") {
     console.log("🗑️ Removing image for campaigner:", id);
 
-    // Delete image from GCS if exists
+    // Delete image from R2 if exists
     if (campaigner.image && campaigner.image.filename) {
       try {
-        await deleteFromGCS(campaigner.image.filename);
-        console.log("✅ Image deleted from GCS");
+        await deleteFromR2(campaigner.image.filename);
+        console.log("✅ Image deleted from R2");
       } catch (error) {
-        console.error("Failed to delete image from GCS:", error.message);
+        console.error("Failed to delete image from R2:", error.message);
       }
     }
 
@@ -685,7 +682,7 @@ export const deleteCampaignerService = async (req) => {
     );
   }
 
-  await deleteFromGCS(campaigner.image.filename);
+  await deleteFromR2(campaigner.image.filename);
   await campaigner.deleteOne();
 
   return {
