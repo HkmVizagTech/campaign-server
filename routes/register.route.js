@@ -10,7 +10,7 @@ import { authorizeRole } from "../middlewares/onlyAdmin.middleware.js";
 
 const registerRouter = express.Router();
 
-registerRouter.post("/register", register);
+registerRouter.post("/register", verifyToken, authorizeRole("admin"), register);
 registerRouter.post("/login", login);
 registerRouter.get(
   "/",
