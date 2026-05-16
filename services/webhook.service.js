@@ -13,7 +13,13 @@ const getWebhookBodyBuffer = (body) => {
   }
 
   if (body && typeof body === "object") {
-    return Buffer.from(JSON.stringify(body));
+    // Body arrived as parsed JSON instead of raw Buffer — middleware likely bypassed.
+    // Returning empty buffer so the signature check fails cleanly with a 400,
+    // rather than silently computing HMAC on re-serialised JSON (wrong key order).
+    console.error(
+      "Webhook body is a parsed object, not a raw Buffer — check bodyParser.raw() middleware order",
+    );
+    return Buffer.from("");
   }
 
   return Buffer.from("");
@@ -24,8 +30,8 @@ const isSignatureValid = (expectedSignature, receivedSignature) => {
     return false;
   }
 
-  const expected = Buffer.from(expectedSignature, "utf8");
-  const received = Buffer.from(receivedSignature, "utf8");
+  const expected = Buffer.from(expectedSignature, "hex");
+  const received = Buffer.from(receivedSignature, "hex");
 
   if (expected.length !== received.length) {
     return false;
@@ -103,6 +109,8 @@ export const razorpayWebhookService = async (req, res) => {
           { status: "failed" },
         );
       }
+
+      return res.json({ status: "ok" });
     }
 
     return res.json({ status: "ok" });
