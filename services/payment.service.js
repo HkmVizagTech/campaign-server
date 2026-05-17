@@ -149,6 +149,15 @@ export const capturePaymentService = async ({
   });
 
   if (!paymentDoc) {
+    if (donationId) {
+      console.error(
+        `Payment record not found for orderId: ${gatewayOrderId}, donationId: ${donationId}. Use the reconcile script to fix this.`,
+      );
+    } else {
+      console.error(
+        `Payment record not found for orderId: ${gatewayOrderId}. This payment is not linked to any donation.`,
+      );
+    }
     throw new AppError("Payment record not found", 404);
   }
 

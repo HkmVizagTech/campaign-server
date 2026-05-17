@@ -84,19 +84,29 @@ export const razorpayWebhookService = async (req, res) => {
 
     if (event.event === "payment.captured") {
       const payment = event.payload.payment.entity;
-      const result = await capturePaymentService({
-        gatewayOrderId: payment.order_id,
-        gatewayPaymentId: payment.id,
-        rawResponse: payment,
-        donationId: payment.notes?.donationId,
-      });
+      try {
+        const result = await capturePaymentService({
+          gatewayOrderId: payment.order_id,
+          gatewayPaymentId: payment.id,
+          rawResponse: payment,
+          donationId: payment.notes?.donationId,
+        });
 
-      return res.json({
-        status:
-          result.message === "Payment already processed"
-            ? "already_processed"
-            : "ok",
-      });
+        return res.json({
+          status:
+            result.message === "Payment already processed"
+              ? "already_processed"
+              : "ok",
+        });
+      } catch (error) {
+        if (error?.statusCode === 404) {
+          console.error(
+            `Webhook payment.captured: ${error.message} — orderId: ${payment.order_id}, paymentId: ${payment.id}, donationId: ${payment.notes?.donationId}. Run: npm run reconcile:donation -- ${payment.notes?.donationId} ${payment.id}`,
+          );
+          return res.json({ status: "not_found_logged" });
+        }
+        throw error;
+      }
     }
 
     if (event.event === "payment.failed") {
