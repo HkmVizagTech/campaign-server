@@ -42,7 +42,7 @@ const isSignatureValid = (expectedSignature, receivedSignature) => {
 
 export const razorpayWebhookService = async (req, res) => {
   try {
-    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET?.trim();
     const razorpaySignatureHeader = req.headers["x-razorpay-signature"];
     const razorpaySignature = Array.isArray(razorpaySignatureHeader)
       ? razorpaySignatureHeader[0]
@@ -71,6 +71,11 @@ export const razorpayWebhookService = async (req, res) => {
       console.error("Webhook error: invalid Razorpay signature", {
         contentType: req.headers["content-type"],
         bodyType: Buffer.isBuffer(req.body) ? "buffer" : typeof req.body,
+        bodyLength: rawBody.length,
+        secretLength: secret.length,
+        secretFirstChars: secret.substring(0, 4) + "...",
+        expectedSignaturePrefix: expectedSignature.substring(0, 8) + "...",
+        receivedSignaturePrefix: razorpaySignature.substring(0, 8) + "...",
       });
       return res.status(400).send("Invalid signature");
     }
