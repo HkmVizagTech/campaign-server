@@ -498,6 +498,14 @@ export const updateCampaignerService = async (req) => {
     throw new AppError("Campaigner not found", 404);
   }
 
+  // Devotees can only edit their own campaigner
+  if (
+    user.role === "devotee" &&
+    campaigner.createdBy?.toString() !== user._id.toString()
+  ) {
+    throw new AppError("You are not authorized to edit this campaigner", 403);
+  }
+
   const previousStatus = campaigner.status;
 
   // Get update data from req.body (text fields)
