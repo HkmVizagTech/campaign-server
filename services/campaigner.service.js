@@ -492,21 +492,20 @@ export const updateCampaignerService = async (req) => {
     throw new AppError(`Invalid Id: ${id}`, 400);
   }
 
-  const campaigner = await Campaigner.findById(id);
+  const campaigner = await Campaigner.findById(id).populate(
+    "templeDevoteInTouch",
+    "userId",
+  );
 
   if (!campaigner) {
     throw new AppError("Campaigner not found", 404);
   }
 
   // Devotees can only edit their own campaigner
+  // Ownership is determined via templeDevoteInTouch.userId (always set, required field)
   if (user.role === "devotee") {
-    if (!campaigner.createdBy) {
-      throw new AppError(
-        "This campaigner is not linked to any account. Please contact admin to assign ownership.",
-        403,
-      );
-    }
-    if (campaigner.createdBy.toString() !== user.id?.toString()) {
+    const ownerId = campaigner.templeDevoteInTouch?.userId?.toString();
+    if (!ownerId || ownerId !== user.id?.toString()) {
       throw new AppError(
         "You are not authorized to edit this campaigner",
         403,
