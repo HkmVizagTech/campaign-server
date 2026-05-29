@@ -499,11 +499,19 @@ export const updateCampaignerService = async (req) => {
   }
 
   // Devotees can only edit their own campaigner
-  if (
-    user.role === "devotee" &&
-    campaigner.createdBy?.toString() !== user.id?.toString()
-  ) {
-    throw new AppError("You are not authorized to edit this campaigner", 403);
+  if (user.role === "devotee") {
+    if (!campaigner.createdBy) {
+      throw new AppError(
+        "This campaigner is not linked to any account. Please contact admin to assign ownership.",
+        403,
+      );
+    }
+    if (campaigner.createdBy.toString() !== user.id?.toString()) {
+      throw new AppError(
+        "You are not authorized to edit this campaigner",
+        403,
+      );
+    }
   }
 
   const previousStatus = campaigner.status;
