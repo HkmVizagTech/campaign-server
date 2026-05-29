@@ -24,10 +24,10 @@ export const getCampaigners = asyncHandlers(async (req, res) => {
 });
 
 export const getSingleCampaigner = asyncHandlers(async (req, res) => {
-  const { status, message, campaginerWithImage, count } =
+  const { status, message, campaginerWithImage, count, redirectTo } =
     await getSingleCampaignerService(req);
 
-  response(res, status, message, { campaginers: campaginerWithImage, count });
+  response(res, status, message, { campaginers: campaginerWithImage, count, redirectTo });
 });
 
 export const getTopDonors = asyncHandlers(async (req, res) => {

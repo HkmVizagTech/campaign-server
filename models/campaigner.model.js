@@ -10,6 +10,11 @@ const campaignerSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    previousSlugs: {
+      type: [String],
+      default: [],
+      index: true,
+    },
     image: {
       filename: {
         type: String,

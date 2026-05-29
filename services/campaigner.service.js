@@ -365,11 +365,37 @@ export const getSingleCampaignerService = async (req) => {
     };
   }
 
-  const campaigner = await Campaigner.findOne(filter)
+  let campaigner = await Campaigner.findOne(filter)
     .populate("templeDevoteInTouch", "-createdAt -updatedAt")
     .populate("campaignId", "-createdAt -updatedAt")
     .populate("createdBy", "name email role")
     .populate("approvedBy", "name email role");
+
+  // If not found by current slug, check if it's an old slug (name was changed)
+  if (!campaigner) {
+    const byOldSlug = await Campaigner.findOne({
+      previousSlugs: slugId,
+      campaignId,
+    })
+      .populate("templeDevoteInTouch", "-createdAt -updatedAt")
+      .populate("campaignId", "-createdAt -updatedAt")
+      .populate("createdBy", "name email role")
+      .populate("approvedBy", "name email role");
+
+    if (byOldSlug) {
+      const donationCount = await Donation.countDocuments({
+        campaigner: byOldSlug._id,
+        status: "success",
+      });
+      return {
+        status: 200,
+        message: "Campaigner details fetched",
+        campaginerWithImage: byOldSlug,
+        count: donationCount,
+        redirectTo: byOldSlug.slug, // Frontend uses this to update the URL
+      };
+    }
+  }
 
   if (!campaigner) {
     throw new AppError("Campaigner not found", 404);
@@ -599,6 +625,14 @@ export const updateCampaignerService = async (req) => {
 
     if (existingSlug) {
       throw new AppError("Campaigner with this name already exists", 400);
+    }
+
+    // Store old slug so old URLs can redirect to the new one
+    if (campaigner.slug && !campaigner.previousSlugs?.includes(campaigner.slug)) {
+      updateData.previousSlugs = [
+        ...(campaigner.previousSlugs || []),
+        campaigner.slug,
+      ];
     }
 
     updateData.slug = slug;
