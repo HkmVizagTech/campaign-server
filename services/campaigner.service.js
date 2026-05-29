@@ -524,6 +524,7 @@ export const updateCampaignerService = async (req) => {
   delete updateData.raisedAmount;
   delete updateData.campaignId;
   delete updateData.slug; // Will be regenerated if name changes
+  delete updateData.templeDevoteInTouch; // Should never be changed via edit
 
   // Handle image update if a new file is uploaded
   if (req.file) {
