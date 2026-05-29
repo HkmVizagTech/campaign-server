@@ -501,7 +501,7 @@ export const updateCampaignerService = async (req) => {
   // Devotees can only edit their own campaigner
   if (
     user.role === "devotee" &&
-    campaigner.createdBy?.toString() !== user._id.toString()
+    campaigner.createdBy?.toString() !== user.id?.toString()
   ) {
     throw new AppError("You are not authorized to edit this campaigner", 403);
   }
