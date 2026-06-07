@@ -255,9 +255,10 @@ export const getCampaignerService = async (req) => {
   }
 
   if (search) {
+    const safeSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     options.$or = [
-      { name: { $regex: search, $options: "i" } },
-      { phoneNumber: { $regex: search } },
+      { name: { $regex: safeSearch, $options: "i" } },
+      { phoneNumber: { $regex: safeSearch } },
     ];
   }
 
@@ -273,6 +274,23 @@ export const getCampaignerService = async (req) => {
     sortOptions = { createdAt: 1, _id: 1 };
   } else if (sort === "createdAt_desc") {
     sortOptions = { createdAt: -1, _id: -1 };
+  }
+
+  // Lite mode: fast single-query response for dropdowns/search pickers.
+  // Skips donor aggregation and populates entirely.
+  if (req.query.lite === "true") {
+    const liteCampaigners = await Campaigner.find(options)
+      .sort(sortOptions)
+      .limit(pageSize)
+      .select("name phoneNumber image slug");
+
+    return {
+      status: 200,
+      message: "Fetched campaigners successfully.",
+      campaigners: liteCampaigners,
+      count: liteCampaigners.length,
+      totalPages: 1,
+    };
   }
 
   const campaigners = await Campaigner.find(options)
