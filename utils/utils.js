@@ -1,6 +1,10 @@
 import axios from "axios";
 
-export const dccApiService = async (donation, gatewayPaymentId = null) => {
+export const dccApiService = async (
+  donation,
+  gatewayPaymentId = null,
+  modeOfPayment = 3,
+) => {
   if (!donation) {
     return {
       success: false,
@@ -26,7 +30,7 @@ export const dccApiService = async (donation, gatewayPaymentId = null) => {
     sevaCategory: donation?.seva?.sevaCategoryId || 2,
     sevaSubCategory: donation?.seva?.sevaSubCategoryId || 3,
     sevaSubCategoryCode: donation?.seva?.sevaSubCode || "GDGD",
-    modeOfPayment: 3,
+    modeOfPayment,
     gatewayPaymentId: gatewayPaymentId || donation?.gatewayPaymentId || null,
     transactionDate: donation.createdAt.toLocaleDateString("en-GB"),
     enrolledBy: donation?.campaigner?.templeDevoteInTouch?.devoteeID || null,

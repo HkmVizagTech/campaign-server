@@ -6,6 +6,10 @@ import Payment from "../models/payment.model.js";
 import Campaign from "../models/campaign.model.js";
 import Campaigner from "../models/campaigner.model.js";
 import TempleDevote from "../models/templeDevote.model.js";
+import {
+  syncDonationWithDcc,
+  sendDonationNotifications,
+} from "./payment.service.js";
 
 const PENDING_DONATION_REUSE_WINDOW_MINUTES = 30;
 
@@ -469,6 +473,48 @@ export const createOfflineDonationService = async (req) => {
     await Campaign.findByIdAndUpdate(campaigner.campaignId, {
       $inc: { raisedAmount: donation.amount },
     });
+  }
+
+  // DCC payment mode codes — confirm with DCC team if these differ
+  const DCC_PAYMENT_MODES = {
+    cash: 1,
+    cheque: 2,
+    upi: 3,
+    bank_transfer: 4,
+  };
+
+  // Sync with DCC and send WhatsApp receipt (same flow as online donations).
+  // Failures here are logged but don't fail the donation entry itself.
+  try {
+    const donationForSync = await Donation.findById(donation._id)
+      .populate("seva")
+      .populate({
+        path: "campaigner",
+        select: "templeDevoteInTouch",
+        populate: {
+          path: "templeDevoteInTouch",
+          select: "devoteeID",
+        },
+      });
+
+    const campaignerForNotify = await Campaigner.findById(
+      campaigner._id,
+    ).populate("templeDevoteInTouch", "phoneNumber");
+
+    if (donationForSync) {
+      const syncedDonation = await syncDonationWithDcc(
+        donationForSync,
+        null,
+        DCC_PAYMENT_MODES[mode] ?? 1,
+      );
+
+      await sendDonationNotifications(syncedDonation, campaignerForNotify);
+    }
+  } catch (error) {
+    console.error(
+      `Offline donation ${donation._id} saved but DCC sync / WhatsApp notification failed:`,
+      error,
+    );
   }
 
   return {

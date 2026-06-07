@@ -21,7 +21,7 @@ const normalizePhoneNumber = (phoneNumber) => {
   return digits.startsWith("91") ? digits : `91${digits}`;
 };
 
-const sendDonationNotifications = async (updatedDonation, campaigner) => {
+export const sendDonationNotifications = async (updatedDonation, campaigner) => {
   if (!updatedDonation?.receiptNumber) {
     const phoneNumber = normalizePhoneNumber(updatedDonation?.donorPhone);
 
@@ -120,8 +120,16 @@ const sendDonationNotifications = async (updatedDonation, campaigner) => {
   }
 };
 
-const syncDonationWithDcc = async (donation, gatewayPaymentId) => {
-  const dccResponse = await dccApiService(donation, gatewayPaymentId);
+export const syncDonationWithDcc = async (
+  donation,
+  gatewayPaymentId,
+  modeOfPayment = 3,
+) => {
+  const dccResponse = await dccApiService(
+    donation,
+    gatewayPaymentId,
+    modeOfPayment,
+  );
 
   donation.dccApiResponse = dccResponse;
   donation.gatewayPaymentId = donation.gatewayPaymentId || gatewayPaymentId;
