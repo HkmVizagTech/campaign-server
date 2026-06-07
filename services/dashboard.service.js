@@ -296,3 +296,140 @@ export const donationTrendService = async (req) => {
 
   throw new AppError("Unauthorized role", 403);
 };
+
+export const devoteeReportService = async (req) => {
+  const { fromDate, toDate, campaignId } = req.query;
+
+  if (campaignId && !mongoose.isValidObjectId(campaignId)) {
+    throw new AppError("Invalid campaignId", 400);
+  }
+
+  // Build donation date filter
+  const donationDateFilter = {};
+  if (fromDate) {
+    const from = new Date(fromDate);
+    if (isNaN(from)) throw new AppError("Invalid fromDate", 400);
+    donationDateFilter.$gte = from;
+  }
+  if (toDate) {
+    const to = new Date(toDate);
+    if (isNaN(to)) throw new AppError("Invalid toDate", 400);
+    to.setHours(23, 59, 59, 999);
+    donationDateFilter.$lte = to;
+  }
+
+  const campaignerMatchStage = {};
+  if (campaignId) {
+    campaignerMatchStage.campaignId = new mongoose.Types.ObjectId(campaignId);
+  }
+
+  const pipeline = [
+    // Start from all campaigners (show 0-donation devotees too)
+    { $match: campaignerMatchStage },
+
+    // Join devotee info
+    {
+      $lookup: {
+        from: "templedevotes",
+        localField: "templeDevoteInTouch",
+        foreignField: "_id",
+        as: "devoteInfo",
+      },
+    },
+    { $unwind: { path: "$devoteInfo", preserveNullAndEmptyArrays: false } },
+
+    // Aggregate donations per campaigner with optional date filter
+    {
+      $lookup: {
+        from: "donations",
+        let: { campId: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$campaigner", "$$campId"] },
+              status: "success",
+              ...(Object.keys(donationDateFilter).length && {
+                createdAt: donationDateFilter,
+              }),
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalRaised: { $sum: "$amount" },
+              donorCount: { $sum: 1 },
+            },
+          },
+        ],
+        as: "donationStats",
+      },
+    },
+
+    // Group by devotee
+    {
+      $group: {
+        _id: "$templeDevoteInTouch",
+        devoteeName: { $first: "$devoteInfo.devoteName" },
+        shortForm: { $first: "$devoteInfo.shortForm" },
+        phoneNumber: { $first: "$devoteInfo.phoneNumber" },
+        devoteeID: { $first: "$devoteInfo.devoteeID" },
+        campaigners: {
+          $push: {
+            _id: "$_id",
+            name: "$name",
+            status: "$status",
+            slug: "$slug",
+            raisedAmount: {
+              $ifNull: [
+                { $arrayElemAt: ["$donationStats.totalRaised", 0] },
+                0,
+              ],
+            },
+            donorCount: {
+              $ifNull: [
+                { $arrayElemAt: ["$donationStats.donorCount", 0] },
+                0,
+              ],
+            },
+          },
+        },
+        totalRaised: {
+          $sum: {
+            $ifNull: [
+              { $arrayElemAt: ["$donationStats.totalRaised", 0] },
+              0,
+            ],
+          },
+        },
+        donorCount: {
+          $sum: {
+            $ifNull: [
+              { $arrayElemAt: ["$donationStats.donorCount", 0] },
+              0,
+            ],
+          },
+        },
+      },
+    },
+
+    // Sort by most raised
+    { $sort: { totalRaised: -1, devoteeName: 1 } },
+  ];
+
+  const results = await Campaigner.aggregate(pipeline);
+
+  const grandTotal = results.reduce(
+    (acc, d) => {
+      acc.totalRaised += d.totalRaised;
+      acc.donorCount += d.donorCount;
+      return acc;
+    },
+    { totalRaised: 0, donorCount: 0 },
+  );
+
+  return {
+    status: 200,
+    message: "Devotee report fetched successfully",
+    data: { devotees: results, grandTotal },
+  };
+};
