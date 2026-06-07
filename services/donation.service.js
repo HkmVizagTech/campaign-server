@@ -407,6 +407,7 @@ export const createOfflineDonationService = async (req) => {
     pan,
     paymentMode, // "cash" | "upi" | "cheque" | "bank_transfer"
     isAnonymous,
+    receiptNumber, // optional: receipt already generated externally
   } = req.body;
 
   // Required field validation
@@ -450,6 +451,20 @@ export const createOfflineDonationService = async (req) => {
     }
   }
 
+  const existingReceipt = receiptNumber?.trim();
+
+  if (existingReceipt) {
+    const duplicate = await Donation.findOne({
+      receiptNumber: existingReceipt,
+    });
+    if (duplicate) {
+      throw new AppError(
+        `A donation with receipt number ${existingReceipt} already exists`,
+        409,
+      );
+    }
+  }
+
   // Create the donation directly as success
   const donation = await Donation.create({
     donorName: donorName.trim(),
@@ -462,6 +477,12 @@ export const createOfflineDonationService = async (req) => {
     isAnonymous: Boolean(isAnonymous),
     pan: pan?.trim()?.toUpperCase() || undefined,
     paymentGateway: mode,
+    // Receipt already generated externally — record it and mark as synced
+    // so the DCC flow never runs for this donation
+    ...(existingReceipt && {
+      receiptNumber: existingReceipt,
+      dccDataSentAt: new Date(),
+    }),
   });
 
   // Increment raised amounts
@@ -484,37 +505,40 @@ export const createOfflineDonationService = async (req) => {
   };
 
   // Sync with DCC and send WhatsApp receipt (same flow as online donations).
+  // Skipped entirely when the receipt was already generated externally.
   // Failures here are logged but don't fail the donation entry itself.
-  try {
-    const donationForSync = await Donation.findById(donation._id)
-      .populate("seva")
-      .populate({
-        path: "campaigner",
-        select: "templeDevoteInTouch",
-        populate: {
-          path: "templeDevoteInTouch",
-          select: "devoteeID",
-        },
-      });
+  if (!existingReceipt) {
+    try {
+      const donationForSync = await Donation.findById(donation._id)
+        .populate("seva")
+        .populate({
+          path: "campaigner",
+          select: "templeDevoteInTouch",
+          populate: {
+            path: "templeDevoteInTouch",
+            select: "devoteeID",
+          },
+        });
 
-    const campaignerForNotify = await Campaigner.findById(
-      campaigner._id,
-    ).populate("templeDevoteInTouch", "phoneNumber");
+      const campaignerForNotify = await Campaigner.findById(
+        campaigner._id,
+      ).populate("templeDevoteInTouch", "phoneNumber");
 
-    if (donationForSync) {
-      const syncedDonation = await syncDonationWithDcc(
-        donationForSync,
-        null,
-        DCC_PAYMENT_MODES[mode] ?? 1,
+      if (donationForSync) {
+        const syncedDonation = await syncDonationWithDcc(
+          donationForSync,
+          null,
+          DCC_PAYMENT_MODES[mode] ?? 1,
+        );
+
+        await sendDonationNotifications(syncedDonation, campaignerForNotify);
+      }
+    } catch (error) {
+      console.error(
+        `Offline donation ${donation._id} saved but DCC sync / WhatsApp notification failed:`,
+        error,
       );
-
-      await sendDonationNotifications(syncedDonation, campaignerForNotify);
     }
-  } catch (error) {
-    console.error(
-      `Offline donation ${donation._id} saved but DCC sync / WhatsApp notification failed:`,
-      error,
-    );
   }
 
   return {
