@@ -391,3 +391,89 @@ export const getDonorDetailsService = async (req) => {
     },
   };
 };
+
+export const createOfflineDonationService = async (req) => {
+  const user = req.user;
+  const {
+    campaignerId,
+    donorName,
+    donorPhone,
+    donorEmail,
+    amount,
+    pan,
+    paymentMode, // "cash" | "upi" | "cheque" | "bank_transfer"
+    isAnonymous,
+  } = req.body;
+
+  // Required field validation
+  if (!campaignerId) {
+    throw new AppError("campaignerId is required", 400);
+  }
+  if (!mongoose.isValidObjectId(campaignerId)) {
+    throw new AppError(`Invalid campaignerId: ${campaignerId}`, 400);
+  }
+  if (!donorName || !donorName.trim()) {
+    throw new AppError("donorName is required", 400);
+  }
+  if (!donorPhone || !/^\d{10}$/.test(String(donorPhone).replace(/\D/g, "").slice(-10))) {
+    throw new AppError("Valid 10-digit donorPhone is required", 400);
+  }
+  if (!amount || Number(amount) <= 0) {
+    throw new AppError("Amount must be greater than 0", 400);
+  }
+
+  const allowedModes = ["cash", "upi", "cheque", "bank_transfer"];
+  const mode = allowedModes.includes(paymentMode) ? paymentMode : "cash";
+
+  // Fetch campaigner with owner info
+  const campaigner = await Campaigner.findById(campaignerId).populate(
+    "templeDevoteInTouch",
+    "userId",
+  );
+
+  if (!campaigner) {
+    throw new AppError("Campaigner not found", 404);
+  }
+
+  // Devotees can only add donations for their own campaigners
+  if (user.role === "devotee") {
+    const ownerId = campaigner.templeDevoteInTouch?.userId?.toString();
+    if (!ownerId || ownerId !== user.id?.toString()) {
+      throw new AppError(
+        "You are not authorized to add donations for this campaigner",
+        403,
+      );
+    }
+  }
+
+  // Create the donation directly as success
+  const donation = await Donation.create({
+    donorName: donorName.trim(),
+    donorPhone: String(donorPhone).replace(/\D/g, "").slice(-10),
+    donorEmail: donorEmail?.trim() || undefined,
+    amount: Number(amount),
+    campaign: campaigner.campaignId,
+    campaigner: campaigner._id,
+    status: "success",
+    isAnonymous: Boolean(isAnonymous),
+    pan: pan?.trim()?.toUpperCase() || undefined,
+    paymentGateway: mode,
+  });
+
+  // Increment raised amounts
+  await Campaigner.findByIdAndUpdate(campaigner._id, {
+    $inc: { raisedAmount: donation.amount },
+  });
+
+  if (campaigner.campaignId) {
+    await Campaign.findByIdAndUpdate(campaigner.campaignId, {
+      $inc: { raisedAmount: donation.amount },
+    });
+  }
+
+  return {
+    status: 201,
+    message: "Offline donation added successfully",
+    data: donation,
+  };
+};
