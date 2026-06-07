@@ -224,7 +224,7 @@ export const getCampaignerService = async (req) => {
 
   const campaign = await Campaign.findOne({
     _id: campId,
-    status: campStatus,
+    ...(campStatus ? { status: campStatus } : {}),
   });
 
   if (!campaign) {
