@@ -13,6 +13,6 @@ const dashboardRouter = express.Router();
 dashboardRouter.get("/summary", verifyToken, authorizeRole("admin", "devotee"), cardSummary);
 dashboardRouter.get("/donation-trend", verifyToken, authorizeRole("admin", "devotee"), donationTrend);
 dashboardRouter.get("/reports/devotee-summary", verifyToken, authorizeRole("admin", "superAdmin"), devoteeReport);
-dashboardRouter.get("/reports/prasadam", verifyToken, authorizeRole("superAdmin"), prasadamReport);
+dashboardRouter.get("/reports/prasadam", verifyToken, authorizeRole("admin", "superAdmin"), prasadamReport);
 
 export default dashboardRouter;
