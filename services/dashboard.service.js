@@ -433,3 +433,62 @@ export const devoteeReportService = async (req) => {
     data: { devotees: results, grandTotal },
   };
 };
+
+export const prasadamReportService = async (req) => {
+  const { fromDate, toDate, campaignId, page = 1, pageSize = 50 } = req.query;
+
+  if (campaignId && !mongoose.isValidObjectId(campaignId)) {
+    throw new AppError("Invalid campaignId", 400);
+  }
+
+  const filter = {
+    status: "success",
+    prasadam: true,
+  };
+
+  if (campaignId) {
+    filter.campaign = new mongoose.Types.ObjectId(campaignId);
+  }
+
+  if (fromDate || toDate) {
+    filter.createdAt = {};
+    if (fromDate) {
+      const from = new Date(fromDate);
+      if (isNaN(from)) throw new AppError("Invalid fromDate", 400);
+      filter.createdAt.$gte = from;
+    }
+    if (toDate) {
+      const to = new Date(toDate);
+      if (isNaN(to)) throw new AppError("Invalid toDate", 400);
+      to.setHours(23, 59, 59, 999);
+      filter.createdAt.$lte = to;
+    }
+  }
+
+  const skip = (Number(page) - 1) * Number(pageSize);
+
+  const [donors, total] = await Promise.all([
+    Donation.find(filter)
+      .select(
+        "donorName donorPhone donorEmail amount address prasadam receiptNumber createdAt campaigner isAnonymous",
+      )
+      .populate("campaigner", "name slug")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(Number(pageSize)),
+    Donation.countDocuments(filter),
+  ]);
+
+  return {
+    status: 200,
+    message: "Prasadam donors fetched successfully",
+    data: {
+      donors,
+      pagination: {
+        total,
+        page: Number(page),
+        pages: Math.ceil(total / Number(pageSize)),
+      },
+    },
+  };
+};

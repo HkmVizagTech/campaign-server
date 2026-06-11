@@ -21,7 +21,7 @@ const registerSchema = new mongoose.Schema(
     role: {
       type: String,
       required: true,
-      enum: ["admin", "devotee"],
+      enum: ["admin", "devotee", "superAdmin"],
     },
     isPasswordChanged: { type: Boolean, default: false },
   },
