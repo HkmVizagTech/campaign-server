@@ -27,9 +27,11 @@ export const dccApiService = async (
     PAN: donation?.pan || null,
     amount: String(donation?.amount || 0),
     accountType: 4,
-    sevaCategory: donation?.seva?.sevaCategoryId || 2,
-    sevaSubCategory: donation?.seva?.sevaSubCategoryId || 3,
-    sevaSubCategoryCode: donation?.seva?.sevaSubCode || "GDGD",
+    // Default seva mapping for campaigner donations (no seva explicitly selected):
+    // Mandir Nirman Seva OL -> Square Feet Seva OL (as of 2026-07-02)
+    sevaCategory: donation?.seva?.sevaCategoryId || 24,
+    sevaSubCategory: donation?.seva?.sevaSubCategoryId || 117,
+    sevaSubCategoryCode: donation?.seva?.sevaSubCode || null,
     modeOfPayment,
     gatewayPaymentId: gatewayPaymentId || donation?.gatewayPaymentId || null,
     transactionDate: donation.createdAt.toLocaleDateString("en-GB"),
