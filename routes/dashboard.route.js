@@ -21,11 +21,54 @@ dashboardRouter.get("/donation-trend", verifyToken, authorizeRole("admin", "devo
 dashboardRouter.get("/reports/devotee-summary", verifyToken, authorizeRole("admin", "superAdmin"), devoteeReport);
 dashboardRouter.get("/reports/prasadam", verifyToken, authorizeRole("admin", "superAdmin"), prasadamReport);
 
-// TEMPORARY — remove after reconcile is done
+dashboardRouter.get(
+  "/pending-donations",
+  verifyToken,
+  authorizeRole("admin", "superAdmin"),
+  asyncHandlers(async (req, res) => {
+    const pending = await Donation.find({ status: "pending" })
+      .populate("campaigner", "name slug")
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .select("donorName donorPhone amount status createdAt campaigner");
+
+    response(res, 200, "Pending donations fetched", pending);
+  }),
+);
+
+dashboardRouter.get(
+  "/donation-lookup/:donationId",
+  verifyToken,
+  authorizeRole("admin", "superAdmin"),
+  asyncHandlers(async (req, res) => {
+    const { donationId } = req.params;
+
+    if (!mongoose.isValidObjectId(donationId)) {
+      return response(res, 400, "Invalid donationId");
+    }
+
+    const donation = await Donation.findById(donationId)
+      .populate("campaigner", "name slug")
+      .select(
+        "donorName donorPhone donorEmail amount status createdAt campaigner receiptNumber gatewayPaymentId",
+      );
+
+    if (!donation) {
+      return response(res, 404, "Donation not found");
+    }
+
+    const paymentDoc = await Payment.findOne({
+      donation: donation._id,
+    }).select("gatewayOrderId status");
+
+    response(res, 200, "Donation found", { donation, payment: paymentDoc });
+  }),
+);
+
 dashboardRouter.post(
   "/reconcile-donation",
   verifyToken,
-  authorizeRole("admin"),
+  authorizeRole("admin", "superAdmin"),
   asyncHandlers(async (req, res) => {
     const { donationId, paymentId } = req.body;
 
