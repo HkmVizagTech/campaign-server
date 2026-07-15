@@ -12,6 +12,8 @@ import { response } from "../utils/response.js";
 import { capturePaymentService } from "../services/payment.service.js";
 import Donation from "../models/donation.model.js";
 import Payment from "../models/payment.model.js";
+import Campaign from "../models/campaign.model.js";
+import Campaigner from "../models/campaigner.model.js";
 import mongoose from "mongoose";
 
 import razorpay from "../config/razorpay.js";
@@ -22,6 +24,70 @@ dashboardRouter.get("/summary", verifyToken, authorizeRole("admin", "devotee"), 
 dashboardRouter.get("/donation-trend", verifyToken, authorizeRole("admin", "devotee"), donationTrend);
 dashboardRouter.get("/reports/devotee-summary", verifyToken, authorizeRole("admin", "superAdmin"), devoteeReport);
 dashboardRouter.get("/reports/prasadam", verifyToken, authorizeRole("admin", "superAdmin"), prasadamReport);
+
+dashboardRouter.post(
+  "/correct-mismatched-donation",
+  verifyToken,
+  authorizeRole("admin", "superAdmin"),
+  asyncHandlers(async (req, res) => {
+    const { donationId } = req.body;
+
+    if (!donationId || !mongoose.isValidObjectId(donationId)) {
+      return response(res, 400, "Valid donationId is required");
+    }
+
+    const donation = await Donation.findById(donationId);
+    if (!donation) {
+      return response(res, 404, "Donation not found");
+    }
+    if (donation.status !== "success") {
+      return response(res, 400, "Only 'success' donations can be corrected here", {
+        currentStatus: donation.status,
+      });
+    }
+
+    // Re-verify with Razorpay one more time right before correcting,
+    // so we never reverse a donation that's actually fine.
+    let livePayment;
+    try {
+      livePayment = await razorpay.payments.fetch(donation.gatewayPaymentId);
+    } catch {
+      livePayment = null;
+    }
+
+    if (livePayment && (livePayment.status === "captured" || livePayment.status === "authorized")) {
+      return response(res, 200, "Razorpay now confirms this payment is captured — no correction needed", {
+        razorpayStatus: livePayment.status,
+      });
+    }
+
+    // Reverse the raised amount exactly as it was added, then mark failed.
+    if (donation.campaign) {
+      await Campaign.findByIdAndUpdate(donation.campaign, {
+        $inc: { raisedAmount: -donation.amount },
+      });
+    }
+    if (donation.campaigner) {
+      await Campaigner.findByIdAndUpdate(donation.campaigner, {
+        $inc: { raisedAmount: -donation.amount },
+      });
+    }
+
+    donation.status = "failed";
+    await donation.save();
+
+    await Payment.findOneAndUpdate(
+      { donation: donation._id },
+      { status: "failed" },
+    );
+
+    response(res, 200, "Donation corrected: marked failed and raised amount reversed", {
+      donationId: donation._id,
+      amountReversed: donation.amount,
+      razorpayStatus: livePayment?.status || "not_found",
+    });
+  }),
+);
 
 dashboardRouter.get(
   "/audit-donations",
