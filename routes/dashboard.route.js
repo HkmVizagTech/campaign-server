@@ -47,12 +47,29 @@ dashboardRouter.post(
     }
 
     // Re-verify with Razorpay one more time right before correcting,
-    // so we never reverse a donation that's actually fine.
+    // so we never reverse a donation that's actually fine — and never
+    // reverse one just because of a network blip on our side either.
     let livePayment;
     try {
       livePayment = await razorpay.payments.fetch(donation.gatewayPaymentId);
-    } catch {
-      livePayment = null;
+    } catch (err) {
+      const statusCode = err?.statusCode || err?.status;
+      const razorpayCode = err?.error?.code;
+      const isGenuineNotFound =
+        (statusCode === 400 || statusCode === 404) &&
+        (razorpayCode === "BAD_REQUEST_ERROR" ||
+          err?.error?.description?.toLowerCase().includes("does not exist"));
+
+      if (!isGenuineNotFound) {
+        // Could be a rate limit, timeout, or auth issue — refuse to touch
+        // the donation rather than risk reversing a valid one incorrectly.
+        return response(
+          res,
+          503,
+          `Could not verify with Razorpay right now (${err?.error?.description || err.message}). Please try again — no changes were made.`,
+        );
+      }
+      livePayment = null; // genuinely doesn't exist on Razorpay
     }
 
     if (livePayment && (livePayment.status === "captured" || livePayment.status === "authorized")) {
@@ -116,10 +133,48 @@ dashboardRouter.get(
 
     const mismatches = [];
     let checked = 0;
+    const errors = [];
+
+    const fetchWithRetry = async (paymentId, attempt = 1) => {
+      try {
+        return await razorpay.payments.fetch(paymentId);
+      } catch (err) {
+        const statusCode = err?.statusCode || err?.status;
+        const razorpayCode = err?.error?.code;
+
+        // A genuine "no such payment" is a 400/404 with BAD_REQUEST_ERROR
+        // and a description mentioning the id — this is the only case
+        // that should ever be treated as a real mismatch.
+        const isGenuineNotFound =
+          (statusCode === 400 || statusCode === 404) &&
+          (razorpayCode === "BAD_REQUEST_ERROR" ||
+            err?.error?.description?.toLowerCase().includes("does not exist"));
+
+        if (isGenuineNotFound) {
+          const notFoundError = new Error("Payment does not exist on Razorpay");
+          notFoundError.isGenuineNotFound = true;
+          throw notFoundError;
+        }
+
+        // Anything else (network blip, rate limit 429, timeout, auth issue)
+        // is transient/infrastructure — retry a couple of times before
+        // giving up, and never label it as "not found".
+        if (attempt < 3) {
+          await new Promise((r) => setTimeout(r, 300 * attempt));
+          return fetchWithRetry(paymentId, attempt + 1);
+        }
+
+        const transientError = new Error(
+          `Could not verify with Razorpay after ${attempt} attempts: ${err?.error?.description || err.message}`,
+        );
+        transientError.isTransient = true;
+        throw transientError;
+      }
+    };
 
     const checkOne = async (donation) => {
       try {
-        const livePayment = await razorpay.payments.fetch(donation.gatewayPaymentId);
+        const livePayment = await fetchWithRetry(donation.gatewayPaymentId);
         checked++;
         if (livePayment.status !== "captured" && livePayment.status !== "authorized") {
           return {
@@ -135,16 +190,28 @@ dashboardRouter.get(
         }
         return null;
       } catch (err) {
-        return {
+        if (err.isGenuineNotFound) {
+          return {
+            donationId: donation._id,
+            donorName: donation.donorName,
+            amount: donation.amount,
+            campaigner: donation.campaigner?.name,
+            receiptNumber: donation.receiptNumber,
+            gatewayPaymentId: donation.gatewayPaymentId,
+            razorpayStatus: "GENUINELY_NOT_FOUND_ON_RAZORPAY",
+            createdAt: donation.createdAt,
+          };
+        }
+
+        // Transient failure — don't flag it as a mismatch, surface it
+        // separately so it can be re-checked, not mistaken for fraud.
+        errors.push({
           donationId: donation._id,
           donorName: donation.donorName,
-          amount: donation.amount,
-          campaigner: donation.campaigner?.name,
-          receiptNumber: donation.receiptNumber,
           gatewayPaymentId: donation.gatewayPaymentId,
-          razorpayStatus: "NOT_FOUND_ON_RAZORPAY",
-          createdAt: donation.createdAt,
-        };
+          error: err.message,
+        });
+        return null;
       }
     };
 
@@ -162,6 +229,7 @@ dashboardRouter.get(
       totalChecked: checked,
       totalMismatches: mismatches.length,
       mismatches,
+      transientErrors: errors,
     });
   }),
 );

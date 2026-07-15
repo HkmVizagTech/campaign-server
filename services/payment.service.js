@@ -219,13 +219,31 @@ export const capturePaymentService = async ({
   try {
     liveRazorpayPayment = await razorpay.payments.fetch(gatewayPaymentId);
   } catch (error) {
+    const statusCode = error?.statusCode || error?.status;
+    const razorpayCode = error?.error?.code;
+    const isGenuineNotFound =
+      (statusCode === 400 || statusCode === 404) &&
+      (razorpayCode === "BAD_REQUEST_ERROR" ||
+        error?.error?.description?.toLowerCase().includes("does not exist"));
+
     console.error(
       `Failed to fetch payment ${gatewayPaymentId} from Razorpay:`,
       error?.error?.description || error.message,
     );
+
+    if (isGenuineNotFound) {
+      throw new AppError(
+        `Payment ${gatewayPaymentId} does not exist on Razorpay.`,
+        400,
+      );
+    }
+
+    // Transient failure (network, rate limit, auth) — refuse to proceed
+    // but make clear this isn't a "doesn't exist" situation, so callers
+    // (webhook, reconcile) know it's safe/worth retrying.
     throw new AppError(
-      `Could not verify payment ${gatewayPaymentId} with Razorpay. It may not exist.`,
-      400,
+      `Could not verify payment ${gatewayPaymentId} with Razorpay right now — try again shortly.`,
+      503,
     );
   }
 
