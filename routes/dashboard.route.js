@@ -94,7 +94,8 @@ dashboardRouter.get(
   verifyToken,
   authorizeRole("admin", "superAdmin"),
   asyncHandlers(async (req, res) => {
-    const { fromDate, toDate, limit = 200 } = req.query;
+    const { fromDate, toDate, limit = 100 } = req.query;
+    const safeLimit = Math.min(Number(limit) || 100, 300);
 
     const filter = { status: "success", gatewayPaymentId: { $exists: true, $ne: null } };
     if (fromDate || toDate) {
@@ -111,17 +112,17 @@ dashboardRouter.get(
       .select("donorName donorPhone amount gatewayPaymentId createdAt campaigner receiptNumber")
       .populate("campaigner", "name")
       .sort({ createdAt: -1 })
-      .limit(Number(limit));
+      .limit(safeLimit);
 
     const mismatches = [];
     let checked = 0;
 
-    for (const donation of donations) {
+    const checkOne = async (donation) => {
       try {
         const livePayment = await razorpay.payments.fetch(donation.gatewayPaymentId);
         checked++;
         if (livePayment.status !== "captured" && livePayment.status !== "authorized") {
-          mismatches.push({
+          return {
             donationId: donation._id,
             donorName: donation.donorName,
             amount: donation.amount,
@@ -130,10 +131,11 @@ dashboardRouter.get(
             gatewayPaymentId: donation.gatewayPaymentId,
             razorpayStatus: livePayment.status,
             createdAt: donation.createdAt,
-          });
+          };
         }
+        return null;
       } catch (err) {
-        mismatches.push({
+        return {
           donationId: donation._id,
           donorName: donation.donorName,
           amount: donation.amount,
@@ -142,8 +144,18 @@ dashboardRouter.get(
           gatewayPaymentId: donation.gatewayPaymentId,
           razorpayStatus: "NOT_FOUND_ON_RAZORPAY",
           createdAt: donation.createdAt,
-        });
+        };
       }
+    };
+
+    // Check in batches of 10 in parallel — Razorpay API is fast enough
+    // for this, and it keeps the whole audit well under a minute even
+    // for a few hundred donations.
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < donations.length; i += BATCH_SIZE) {
+      const batch = donations.slice(i, i + BATCH_SIZE);
+      const results = await Promise.all(batch.map(checkOne));
+      mismatches.push(...results.filter(Boolean));
     }
 
     response(res, 200, "Audit complete", {
