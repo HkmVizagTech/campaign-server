@@ -60,19 +60,30 @@ dashboardRouter.post(
         (razorpayCode === "BAD_REQUEST_ERROR" ||
           err?.error?.description?.toLowerCase().includes("does not exist"));
 
-      if (!isGenuineNotFound) {
-        // Could be a rate limit, timeout, or auth issue — refuse to touch
-        // the donation rather than risk reversing a valid one incorrectly.
+      if (isGenuineNotFound) {
+        // A payment ID that genuinely doesn't exist on Razorpay is almost
+        // always OUR data problem (wrong API key/mode, corrupted ID) —
+        // it is NOT proof the donation itself was fake. Refuse to
+        // auto-reverse; this needs a human to check the Razorpay
+        // dashboard directly and the RAZORPAY_API_KEY/KEY_SECRET mode
+        // (test vs live) before anything is touched.
         return response(
           res,
-          503,
-          `Could not verify with Razorpay right now (${err?.error?.description || err.message}). Please try again — no changes were made.`,
+          409,
+          `Razorpay has no record of payment ${donation.gatewayPaymentId}. This usually means a test/live API key mismatch or a data issue on our side — NOT proof the donation is invalid. Please verify manually in the Razorpay dashboard before taking any action. No changes were made.`,
         );
       }
-      livePayment = null; // genuinely doesn't exist on Razorpay
+
+      // Rate limit, timeout, or auth issue — refuse to touch the
+      // donation rather than risk reversing a valid one incorrectly.
+      return response(
+        res,
+        503,
+        `Could not verify with Razorpay right now (${err?.error?.description || err.message}). Please try again — no changes were made.`,
+      );
     }
 
-    if (livePayment && (livePayment.status === "captured" || livePayment.status === "authorized")) {
+    if (livePayment.status === "captured" || livePayment.status === "authorized") {
       return response(res, 200, "Razorpay now confirms this payment is captured — no correction needed", {
         razorpayStatus: livePayment.status,
       });
@@ -198,7 +209,8 @@ dashboardRouter.get(
             campaigner: donation.campaigner?.name,
             receiptNumber: donation.receiptNumber,
             gatewayPaymentId: donation.gatewayPaymentId,
-            razorpayStatus: "GENUINELY_NOT_FOUND_ON_RAZORPAY",
+            razorpayStatus: "NEEDS_MANUAL_CHECK_NOT_ON_RAZORPAY",
+            needsManualCheck: true,
             createdAt: donation.createdAt,
           };
         }
