@@ -14,12 +14,79 @@ import Donation from "../models/donation.model.js";
 import Payment from "../models/payment.model.js";
 import mongoose from "mongoose";
 
+import razorpay from "../config/razorpay.js";
+
 const dashboardRouter = express.Router();
 
 dashboardRouter.get("/summary", verifyToken, authorizeRole("admin", "devotee"), cardSummary);
 dashboardRouter.get("/donation-trend", verifyToken, authorizeRole("admin", "devotee"), donationTrend);
 dashboardRouter.get("/reports/devotee-summary", verifyToken, authorizeRole("admin", "superAdmin"), devoteeReport);
 dashboardRouter.get("/reports/prasadam", verifyToken, authorizeRole("admin", "superAdmin"), prasadamReport);
+
+dashboardRouter.get(
+  "/audit-donations",
+  verifyToken,
+  authorizeRole("admin", "superAdmin"),
+  asyncHandlers(async (req, res) => {
+    const { fromDate, toDate, limit = 200 } = req.query;
+
+    const filter = { status: "success", gatewayPaymentId: { $exists: true, $ne: null } };
+    if (fromDate || toDate) {
+      filter.createdAt = {};
+      if (fromDate) filter.createdAt.$gte = new Date(fromDate);
+      if (toDate) {
+        const to = new Date(toDate);
+        to.setHours(23, 59, 59, 999);
+        filter.createdAt.$lte = to;
+      }
+    }
+
+    const donations = await Donation.find(filter)
+      .select("donorName donorPhone amount gatewayPaymentId createdAt campaigner receiptNumber")
+      .populate("campaigner", "name")
+      .sort({ createdAt: -1 })
+      .limit(Number(limit));
+
+    const mismatches = [];
+    let checked = 0;
+
+    for (const donation of donations) {
+      try {
+        const livePayment = await razorpay.payments.fetch(donation.gatewayPaymentId);
+        checked++;
+        if (livePayment.status !== "captured" && livePayment.status !== "authorized") {
+          mismatches.push({
+            donationId: donation._id,
+            donorName: donation.donorName,
+            amount: donation.amount,
+            campaigner: donation.campaigner?.name,
+            receiptNumber: donation.receiptNumber,
+            gatewayPaymentId: donation.gatewayPaymentId,
+            razorpayStatus: livePayment.status,
+            createdAt: donation.createdAt,
+          });
+        }
+      } catch (err) {
+        mismatches.push({
+          donationId: donation._id,
+          donorName: donation.donorName,
+          amount: donation.amount,
+          campaigner: donation.campaigner?.name,
+          receiptNumber: donation.receiptNumber,
+          gatewayPaymentId: donation.gatewayPaymentId,
+          razorpayStatus: "NOT_FOUND_ON_RAZORPAY",
+          createdAt: donation.createdAt,
+        });
+      }
+    }
+
+    response(res, 200, "Audit complete", {
+      totalChecked: checked,
+      totalMismatches: mismatches.length,
+      mismatches,
+    });
+  }),
+);
 
 dashboardRouter.get(
   "/pending-donations",

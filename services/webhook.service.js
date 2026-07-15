@@ -105,6 +105,16 @@ export const razorpayWebhookService = async (req, res) => {
           );
           return res.json({ status: "not_found_logged" });
         }
+        if (error?.statusCode === 400) {
+          // capturePaymentService re-verified with Razorpay and it wasn't
+          // actually captured (e.g. refunded moments later) — already
+          // marked failed inside that function. Acknowledge so Razorpay
+          // doesn't keep retrying this webhook indefinitely.
+          console.error(
+            `Webhook payment.captured: verification failed — ${error.message}`,
+          );
+          return res.json({ status: "verification_failed_logged" });
+        }
         throw error;
       }
     }

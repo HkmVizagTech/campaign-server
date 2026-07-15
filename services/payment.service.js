@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import razorpay from "../config/razorpay.js";
 import Payment from "../models/payment.model.js";
 import Donation from "../models/donation.model.js";
 import Campaigner from "../models/campaigner.model.js";
@@ -208,6 +209,49 @@ export const capturePaymentService = async ({
       status: 200,
       message: "Payment already processed",
     };
+  }
+
+  // CRITICAL: never trust a signature match or a caller-supplied payload
+  // as proof of a successful payment. Always re-confirm the payment's
+  // actual current status directly from Razorpay before marking a
+  // donation as success — this is the only source of truth.
+  let liveRazorpayPayment;
+  try {
+    liveRazorpayPayment = await razorpay.payments.fetch(gatewayPaymentId);
+  } catch (error) {
+    console.error(
+      `Failed to fetch payment ${gatewayPaymentId} from Razorpay:`,
+      error?.error?.description || error.message,
+    );
+    throw new AppError(
+      `Could not verify payment ${gatewayPaymentId} with Razorpay. It may not exist.`,
+      400,
+    );
+  }
+
+  if (
+    liveRazorpayPayment.status !== "captured" &&
+    liveRazorpayPayment.status !== "authorized"
+  ) {
+    // Payment genuinely did not succeed — mark it failed and stop here.
+    // No WhatsApp, no DCC call, no raisedAmount update happens below this line.
+    paymentDoc.status = "failed";
+    paymentDoc.rawResponse = liveRazorpayPayment;
+    await paymentDoc.save();
+
+    await Donation.findByIdAndUpdate(linkedDonationId, { status: "failed" });
+
+    throw new AppError(
+      `Razorpay reports this payment as '${liveRazorpayPayment.status}', not captured. Donation marked as failed — no receipt or notification sent.`,
+      400,
+    );
+  }
+
+  if (liveRazorpayPayment.order_id !== gatewayOrderId) {
+    throw new AppError(
+      `Payment ${gatewayPaymentId} belongs to a different order (${liveRazorpayPayment.order_id}), not ${gatewayOrderId}. Refusing to capture.`,
+      400,
+    );
   }
 
   paymentDoc.gatewayPaymentId = gatewayPaymentId;
