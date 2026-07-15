@@ -26,13 +26,15 @@ dashboardRouter.get(
   verifyToken,
   authorizeRole("admin", "superAdmin"),
   asyncHandlers(async (req, res) => {
-    const pending = await Donation.find({ status: "pending" })
+    const unresolved = await Donation.find({
+      status: { $in: ["pending", "failed"] },
+    })
       .populate("campaigner", "name slug")
       .sort({ createdAt: -1 })
       .limit(100)
       .select("donorName donorPhone amount status createdAt campaigner");
 
-    response(res, 200, "Pending donations fetched", pending);
+    response(res, 200, "Pending/failed donations fetched", unresolved);
   }),
 );
 

@@ -33,6 +33,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.2.1",
     "multer": "^2.0.2",
+    "node-cron": "^3.0.3",
     "nodemon": "^3.1.11",
     "number-to-words": "^1.2.4",
     "pdf-lib": "^1.17.1",
