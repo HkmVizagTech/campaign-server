@@ -100,6 +100,74 @@ dashboardRouter.get(
 );
 
 dashboardRouter.post(
+  "/verify-orders",
+  verifyToken,
+  authorizeRole("admin", "superAdmin"),
+  asyncHandlers(async (req, res) => {
+    const { orderIds } = req.body;
+
+    if (!Array.isArray(orderIds) || orderIds.length === 0) {
+      return response(res, 400, "orderIds array is required");
+    }
+    if (orderIds.length > 100) {
+      return response(res, 400, "Max 100 order IDs per request");
+    }
+
+    const checkOrder = async (orderId, attempt = 1) => {
+      try {
+        // Fetch every payment attempt made under this order — an order
+        // can have multiple attempts (failed, then a retry that succeeded)
+        const result = await razorpay.orders.fetchPayments(orderId);
+        const attempts = result?.items || [];
+
+        if (attempts.length === 0) {
+          return { orderId, razorpayStatus: "no_payment_attempted", attempts: [] };
+        }
+
+        const captured = attempts.find((p) => p.status === "captured");
+        const authorized = attempts.find((p) => p.status === "authorized");
+        const best = captured || authorized || attempts[attempts.length - 1];
+
+        return {
+          orderId,
+          razorpayStatus: best.status,
+          gatewayPaymentId: best.id,
+          attempts: attempts.map((p) => ({ id: p.id, status: p.status })),
+        };
+      } catch (err) {
+        const statusCode = err?.statusCode || err?.status;
+        const razorpayCode = err?.error?.code;
+        const isGenuineNotFound =
+          (statusCode === 400 || statusCode === 404) &&
+          (razorpayCode === "BAD_REQUEST_ERROR" ||
+            err?.error?.description?.toLowerCase().includes("does not exist"));
+
+        if (isGenuineNotFound) {
+          return { orderId, razorpayStatus: "order_not_found_needs_manual_check", attempts: [] };
+        }
+
+        if (attempt < 3) {
+          await new Promise((r) => setTimeout(r, 300 * attempt));
+          return checkOrder(orderId, attempt + 1);
+        }
+
+        return { orderId, razorpayStatus: "could_not_verify_transient_error", attempts: [] };
+      }
+    };
+
+    const BATCH_SIZE = 10;
+    const results = [];
+    for (let i = 0; i < orderIds.length; i += BATCH_SIZE) {
+      const batch = orderIds.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(batch.map((id) => checkOrder(id)));
+      results.push(...batchResults);
+    }
+
+    response(res, 200, "Orders verified", { results });
+  }),
+);
+
+dashboardRouter.post(
   "/correct-mismatched-donation",
   verifyToken,
   authorizeRole("admin", "superAdmin"),
