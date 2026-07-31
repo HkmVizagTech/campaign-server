@@ -153,6 +153,20 @@ export const capturePaymentService = async ({
   rawResponse,
   donationId,
 }) => {
+  // Absolute guard, enforced at the single choke point every caller
+  // (webhook, /payment/verify, and the admin reconcile tool) goes
+  // through: a Razorpay payment ID always starts with "pay_". An
+  // order ID (starts with "order_") must NEVER be accepted here —
+  // this exact mix-up is what let failed transactions get recorded
+  // as successful, with receipts created and WhatsApp sent for
+  // payments that never actually succeeded.
+  if (!/^pay_[A-Za-z0-9]+$/.test(String(gatewayPaymentId || "").trim())) {
+    throw new AppError(
+      `"${gatewayPaymentId}" is not a valid Razorpay payment ID (must start with "pay_"). Refusing to capture — an order ID must never be used here.`,
+      400,
+    );
+  }
+
   const paymentDoc = await Payment.findOne({
     gatewayOrderId,
   });

@@ -247,6 +247,29 @@ dashboardRouter.get(
 );
 
 dashboardRouter.get(
+  "/donations-with-order-id-as-payment-id",
+  verifyToken,
+  authorizeRole("admin", "superAdmin"),
+  asyncHandlers(async (req, res) => {
+    // Finds every donation where gatewayPaymentId was wrongly stored
+    // as an order ID (starts with "order_") instead of a real payment
+    // ID (starts with "pay_"). These are exactly the records that
+    // could have been marked success without ever being verified
+    // against a real Razorpay payment.
+    const affected = await Donation.find({
+      gatewayPaymentId: { $regex: /^order_/ },
+    })
+      .populate("campaigner", "name slug")
+      .sort({ createdAt: -1 })
+      .select(
+        "donorName donorPhone donorEmail amount status createdAt campaigner receiptNumber gatewayPaymentId",
+      );
+
+    response(res, 200, "Donations with order ID stored as payment ID", affected);
+  }),
+);
+
+dashboardRouter.get(
   "/pending-donations",
   verifyToken,
   authorizeRole("admin", "superAdmin"),
@@ -304,6 +327,19 @@ dashboardRouter.post(
     }
     if (!mongoose.isValidObjectId(donationId)) {
       return response(res, 400, "Invalid donationId");
+    }
+
+    // Hard guard: never allow an order_xxx ID to be used where a
+    // payment_id is required. This was the exact mistake that let
+    // failed transactions get recorded as successful — receipts
+    // created and WhatsApp sent for payments that never actually
+    // succeeded. A Razorpay payment ID always starts with "pay_".
+    if (!/^pay_[A-Za-z0-9]+$/.test(paymentId.trim())) {
+      return response(
+        res,
+        400,
+        `"${paymentId}" is not a valid Razorpay payment ID. It must start with "pay_" — never use the order ID (starts with "order_") here.`,
+      );
     }
 
     const donation = await Donation.findById(donationId);
