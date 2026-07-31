@@ -264,8 +264,9 @@ dashboardRouter.get(
   verifyToken,
   authorizeRole("admin", "superAdmin"),
   asyncHandlers(async (req, res) => {
-    const { fromDate, toDate, limit = 100 } = req.query;
-    const safeLimit = Math.min(Number(limit) || 100, 300);
+    const { fromDate, toDate, limit = 100, page = 1 } = req.query;
+    const safeLimit = Math.min(Number(limit) || 100, 500);
+    const skip = (Number(page) - 1) * safeLimit;
 
     const filter = { status: "success", gatewayPaymentId: { $exists: true, $ne: null } };
     if (fromDate || toDate) {
@@ -278,10 +279,16 @@ dashboardRouter.get(
       }
     }
 
+    // Total count of ALL success donations matching the filter, regardless
+    // of the page/limit — so the admin knows exactly how much of their
+    // history has actually been checked vs how much remains.
+    const totalMatching = await Donation.countDocuments(filter);
+
     const donations = await Donation.find(filter)
       .select("donorName donorPhone amount gatewayPaymentId createdAt campaigner receiptNumber")
       .populate("campaigner", "name")
-      .sort({ createdAt: -1 })
+      .sort({ createdAt: 1 }) // oldest first, so a full sweep is deterministic across pages
+      .skip(skip)
       .limit(safeLimit);
 
     const mismatches = [];
@@ -379,11 +386,19 @@ dashboardRouter.get(
       mismatches.push(...results.filter(Boolean));
     }
 
+    const totalPages = Math.ceil(totalMatching / safeLimit);
+
     response(res, 200, "Audit complete", {
       totalChecked: checked,
       totalMismatches: mismatches.length,
       mismatches,
       transientErrors: errors,
+      // Coverage info — critical so the admin knows this audit didn't
+      // silently skip most of their history.
+      totalMatchingSuccessDonations: totalMatching,
+      currentPage: Number(page),
+      totalPages,
+      isFullyCovered: Number(page) >= totalPages,
     });
   }),
 );
