@@ -25,6 +25,80 @@ dashboardRouter.get("/donation-trend", verifyToken, authorizeRole("admin", "devo
 dashboardRouter.get("/reports/devotee-summary", verifyToken, authorizeRole("admin", "superAdmin"), devoteeReport);
 dashboardRouter.get("/reports/prasadam", verifyToken, authorizeRole("admin", "superAdmin"), prasadamReport);
 
+dashboardRouter.get(
+  "/reports/funders-with-order-id",
+  verifyToken,
+  authorizeRole("admin", "superAdmin"),
+  asyncHandlers(async (req, res) => {
+    const { fromDate, toDate, status, page = 1, pageSize = 100 } = req.query;
+
+    const donationFilter = {};
+    if (status && ["pending", "success", "failed"].includes(status)) {
+      donationFilter.status = status;
+    }
+    if (fromDate || toDate) {
+      donationFilter.createdAt = {};
+      if (fromDate) donationFilter.createdAt.$gte = new Date(fromDate);
+      if (toDate) {
+        const to = new Date(toDate);
+        to.setHours(23, 59, 59, 999);
+        donationFilter.createdAt.$lte = to;
+      }
+    }
+
+    const skip = (Number(page) - 1) * Number(pageSize);
+
+    const [donations, total] = await Promise.all([
+      Donation.find(donationFilter)
+        .select(
+          "donorName donorPhone donorEmail amount status createdAt campaigner receiptNumber gatewayPaymentId",
+        )
+        .populate("campaigner", "name slug")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(pageSize)),
+      Donation.countDocuments(donationFilter),
+    ]);
+
+    const donationIds = donations.map((d) => d._id);
+    const payments = await Payment.find({
+      donation: { $in: donationIds },
+    }).select("donation gatewayOrderId gatewayPaymentId status");
+
+    const paymentByDonation = {};
+    payments.forEach((p) => {
+      paymentByDonation[p.donation.toString()] = p;
+    });
+
+    const funders = donations.map((d) => {
+      const payment = paymentByDonation[d._id.toString()];
+      return {
+        donationId: d._id,
+        donorName: d.donorName,
+        donorPhone: d.donorPhone,
+        donorEmail: d.donorEmail,
+        amount: d.amount,
+        donationStatus: d.status,
+        campaigner: d.campaigner?.name || null,
+        receiptNumber: d.receiptNumber || null,
+        gatewayOrderId: payment?.gatewayOrderId || null,
+        gatewayPaymentId: payment?.gatewayPaymentId || d.gatewayPaymentId || null,
+        paymentStatus: payment?.status || null,
+        createdAt: d.createdAt,
+      };
+    });
+
+    response(res, 200, "Funders with order ID fetched", {
+      funders,
+      pagination: {
+        total,
+        page: Number(page),
+        pages: Math.ceil(total / Number(pageSize)),
+      },
+    });
+  }),
+);
+
 dashboardRouter.post(
   "/correct-mismatched-donation",
   verifyToken,
