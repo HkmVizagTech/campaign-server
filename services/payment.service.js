@@ -152,6 +152,13 @@ export const capturePaymentService = async ({
   gatewaySignature,
   rawResponse,
   donationId,
+  // Only ever set by the webhook handler, using the status straight from
+  // Razorpay's own HMAC-signed payload — that signature already proves
+  // authenticity, so no extra live API call is needed or made in that case.
+  // /payment/verify and the admin reconcile tool never set this, since a
+  // caller-supplied payment ID there has no such cryptographic guarantee
+  // and MUST be re-confirmed live against Razorpay.
+  trustedPaymentStatus,
 }) => {
   // Absolute guard, enforced at the single choke point every caller
   // (webhook, /payment/verify, and the admin reconcile tool) goes
@@ -229,36 +236,51 @@ export const capturePaymentService = async ({
   // as proof of a successful payment. Always re-confirm the payment's
   // actual current status directly from Razorpay before marking a
   // donation as success — this is the only source of truth.
+  //
+  // EXCEPTION: the webhook payload itself is HMAC-signed by Razorpay
+  // (verified before this function is ever called), so its embedded
+  // payment status is already authentic — no live API call needed
+  // there, which also avoids a live-fetch outage/rate-limit taking
+  // down webhook processing and causing Razorpay to auto-disable it
+  // after repeated failures.
   let liveRazorpayPayment;
-  try {
-    liveRazorpayPayment = await razorpay.payments.fetch(gatewayPaymentId);
-  } catch (error) {
-    const statusCode = error?.statusCode || error?.status;
-    const razorpayCode = error?.error?.code;
-    const isGenuineNotFound =
-      (statusCode === 400 || statusCode === 404) &&
-      (razorpayCode === "BAD_REQUEST_ERROR" ||
-        error?.error?.description?.toLowerCase().includes("does not exist"));
 
-    console.error(
-      `Failed to fetch payment ${gatewayPaymentId} from Razorpay:`,
-      error?.error?.description || error.message,
-    );
+  if (trustedPaymentStatus) {
+    liveRazorpayPayment = {
+      status: trustedPaymentStatus,
+      order_id: gatewayOrderId,
+    };
+  } else {
+    try {
+      liveRazorpayPayment = await razorpay.payments.fetch(gatewayPaymentId);
+    } catch (error) {
+      const statusCode = error?.statusCode || error?.status;
+      const razorpayCode = error?.error?.code;
+      const isGenuineNotFound =
+        (statusCode === 400 || statusCode === 404) &&
+        (razorpayCode === "BAD_REQUEST_ERROR" ||
+          error?.error?.description?.toLowerCase().includes("does not exist"));
 
-    if (isGenuineNotFound) {
+      console.error(
+        `Failed to fetch payment ${gatewayPaymentId} from Razorpay:`,
+        error?.error?.description || error.message,
+      );
+
+      if (isGenuineNotFound) {
+        throw new AppError(
+          `Payment ${gatewayPaymentId} does not exist on Razorpay.`,
+          400,
+        );
+      }
+
+      // Transient failure (network, rate limit, auth) — refuse to proceed
+      // but make clear this isn't a "doesn't exist" situation, so callers
+      // (reconcile) know it's safe/worth retrying.
       throw new AppError(
-        `Payment ${gatewayPaymentId} does not exist on Razorpay.`,
-        400,
+        `Could not verify payment ${gatewayPaymentId} with Razorpay right now — try again shortly.`,
+        503,
       );
     }
-
-    // Transient failure (network, rate limit, auth) — refuse to proceed
-    // but make clear this isn't a "doesn't exist" situation, so callers
-    // (webhook, reconcile) know it's safe/worth retrying.
-    throw new AppError(
-      `Could not verify payment ${gatewayPaymentId} with Razorpay right now — try again shortly.`,
-      503,
-    );
   }
 
   if (

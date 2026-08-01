@@ -90,6 +90,7 @@ export const razorpayWebhookService = async (req, res) => {
           gatewayPaymentId: payment.id,
           rawResponse: payment,
           donationId: payment.notes?.donationId,
+          trustedPaymentStatus: payment.status,
         });
 
         return res.json({
