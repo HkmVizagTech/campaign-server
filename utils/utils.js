@@ -52,6 +52,7 @@ export const dccApiService = async (
       success: true,
       data: result?.data || null,
       error: null,
+      payloadSent: payload,
     };
   } catch (error) {
     const errorPayload = error.response?.data || { message: error.message };
@@ -61,6 +62,7 @@ export const dccApiService = async (
       success: false,
       data: null,
       error: errorPayload,
+      payloadSent: payload,
     };
   }
 };

@@ -77,6 +77,7 @@ const donationSchema = new mongoose.Schema(
     },
     dccDataSentAt: Date,
     dccApiResponse: Object,
+    dccRequestPayload: Object,
   },
   {
     timestamps: true,

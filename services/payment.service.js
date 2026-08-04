@@ -133,6 +133,7 @@ export const syncDonationWithDcc = async (
   );
 
   donation.dccApiResponse = dccResponse;
+  donation.dccRequestPayload = dccResponse?.payloadSent || null;
   donation.gatewayPaymentId = donation.gatewayPaymentId || gatewayPaymentId;
 
   if (dccResponse?.success) {

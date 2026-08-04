@@ -26,6 +26,64 @@ dashboardRouter.get("/reports/devotee-summary", verifyToken, authorizeRole("admi
 dashboardRouter.get("/reports/prasadam", verifyToken, authorizeRole("admin", "superAdmin"), prasadamReport);
 
 dashboardRouter.get(
+  "/reports/dcc-seva-codes",
+  verifyToken,
+  authorizeRole("admin", "superAdmin"),
+  asyncHandlers(async (req, res) => {
+    const { fromDate, toDate, page = 1, pageSize = 100 } = req.query;
+
+    const filter = { status: "success" };
+    if (fromDate || toDate) {
+      filter.createdAt = {};
+      if (fromDate) filter.createdAt.$gte = new Date(fromDate);
+      if (toDate) {
+        const to = new Date(toDate);
+        to.setHours(23, 59, 59, 999);
+        filter.createdAt.$lte = to;
+      }
+    }
+
+    const skip = (Number(page) - 1) * Number(pageSize);
+
+    const [donations, total] = await Promise.all([
+      Donation.find(filter)
+        .select("donorName donorPhone amount receiptNumber dccRequestPayload seva createdAt")
+        .populate("seva", "sevaCategory sevaSubCategory sevaCode")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(pageSize)),
+      Donation.countDocuments(filter),
+    ]);
+
+    const results = donations.map((d) => ({
+      donationId: d._id,
+      donorName: d.donorName,
+      donorPhone: d.donorPhone,
+      amount: d.amount,
+      receiptNumber: d.receiptNumber,
+      sevaSelected: d.seva
+        ? `${d.seva.sevaCategory} - ${d.seva.sevaSubCategory} (${d.seva.sevaCode})`
+        : "No seva selected (default used)",
+      // What was ACTUALLY sent to DCC — the real source of truth.
+      // null for donations created before this tracking was added.
+      sevaCategorySent: d.dccRequestPayload?.sevaCategory ?? "not recorded (pre-tracking)",
+      sevaSubCategorySent: d.dccRequestPayload?.sevaSubCategory ?? "not recorded (pre-tracking)",
+      sevaSubCategoryCodeSent: d.dccRequestPayload?.sevaSubCategoryCode ?? "not recorded (pre-tracking)",
+      createdAt: d.createdAt,
+    }));
+
+    response(res, 200, "DCC seva codes report fetched", {
+      results,
+      pagination: {
+        total,
+        page: Number(page),
+        pages: Math.ceil(total / Number(pageSize)),
+      },
+    });
+  }),
+);
+
+dashboardRouter.get(
   "/reports/funders-with-order-id",
   verifyToken,
   authorizeRole("admin", "superAdmin"),
