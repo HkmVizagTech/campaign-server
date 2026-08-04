@@ -28,7 +28,9 @@ export const dccApiService = async (
     amount: String(donation?.amount || 0),
     accountType: 4,
     // Default seva mapping for campaigner donations (no seva explicitly selected):
-    // Mandir Nirman Seva OL -> Square Feet Seva OL (as of 2026-07-02)
+    // Category "Online Donation" (24) -> Square Feet Seva OL (117), per DCC mapping table.
+    // Note: category was previously labeled "Mandir Nirman Seva OL" but the ID (24)
+    // and sub-category ID (117) are unchanged — only the display name changed.
     sevaCategory: donation?.seva?.sevaCategoryId || 24,
     sevaSubCategory: donation?.seva?.sevaSubCategoryId || 117,
     sevaSubCategoryCode: donation?.seva?.sevaSubCode || null,
