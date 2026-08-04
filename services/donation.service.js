@@ -408,6 +408,7 @@ export const createOfflineDonationService = async (req) => {
     paymentMode, // "cash" | "upi" | "cheque" | "bank_transfer"
     isAnonymous,
     receiptNumber, // optional: receipt already generated externally
+    sevaId, // optional: which seva this cash donation is for — determines DCC codes
   } = req.body;
 
   // Required field validation
@@ -429,6 +430,10 @@ export const createOfflineDonationService = async (req) => {
 
   const allowedModes = ["cash", "upi", "cheque", "bank_transfer"];
   const mode = allowedModes.includes(paymentMode) ? paymentMode : "cash";
+
+  if (sevaId && !mongoose.isValidObjectId(sevaId)) {
+    throw new AppError(`Invalid sevaId: ${sevaId}`, 400);
+  }
 
   // Fetch campaigner with owner info
   const campaigner = await Campaigner.findById(campaignerId).populate(
@@ -477,6 +482,7 @@ export const createOfflineDonationService = async (req) => {
     isAnonymous: Boolean(isAnonymous),
     pan: pan?.trim()?.toUpperCase() || undefined,
     paymentGateway: mode,
+    seva: sevaId || null,
     // Receipt already generated externally — record it and mark as synced
     // so the DCC flow never runs for this donation
     ...(existingReceipt && {
