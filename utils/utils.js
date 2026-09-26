@@ -1,5 +1,13 @@
 import axios from "axios";
 
+export const normalizePhoneNumber = (phoneNumber) => {
+  const digits = phoneNumber?.replace(/\D/g, "");
+
+  if (!digits) return null;
+
+  return digits.startsWith("91") ? digits : `91${digits}`;
+};
+
 export const dccApiService = async (
   donation,
   gatewayPaymentId = null,

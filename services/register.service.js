@@ -5,6 +5,7 @@ import bcrypt, { genSalt } from "bcrypt";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { sendWhatsappMessage } from "./whatsapp.service.js";
+import { normalizePhoneNumber } from "../utils/utils.js";
 
 export const registerService = async (req) => {
   const { name, email, password } = req.body;
@@ -181,6 +182,15 @@ export const requestPasswordResetOtpService = async (req) => {
     );
   }
 
+  const normalizedPhone = normalizePhoneNumber(templeDevote.phoneNumber);
+
+  if (!normalizedPhone) {
+    throw new AppError(
+      "The phone number linked to this account is invalid. Please contact an admin.",
+      400,
+    );
+  }
+
   if (
     user.resetOtpLastSentAt &&
     Date.now() - user.resetOtpLastSentAt.getTime() <
@@ -207,7 +217,7 @@ export const requestPasswordResetOtpService = async (req) => {
   await user.save();
 
   // Uses the approved WhatsApp template named "otp" (Meta/Flaxxa).
-  await sendWhatsappMessage(templeDevote.phoneNumber, "otp", [
+  await sendWhatsappMessage(normalizedPhone, "otp", [
     { type: "text", text: otp },
   ]);
 

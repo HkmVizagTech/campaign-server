@@ -6,21 +6,13 @@ import Payment from "../models/payment.model.js";
 import Donation from "../models/donation.model.js";
 import Campaigner from "../models/campaigner.model.js";
 import Campaign from "../models/campaign.model.js";
-import { dccApiService } from "../utils/utils.js";
+import { dccApiService, normalizePhoneNumber } from "../utils/utils.js";
 import { AppError } from "../utils/AppError.js";
 import { generateReceiptBuffer } from "./receipt.service.js";
 import {
   sendRecieptWhatsapp,
   sendWhatsappMessage,
 } from "./whatsapp.service.js";
-
-const normalizePhoneNumber = (phoneNumber) => {
-  const digits = phoneNumber?.replace(/\D/g, "");
-
-  if (!digits) return null;
-
-  return digits.startsWith("91") ? digits : `91${digits}`;
-};
 
 export const sendDonationNotifications = async (updatedDonation, campaigner) => {
   if (!updatedDonation?.receiptNumber) {
