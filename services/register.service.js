@@ -206,10 +206,8 @@ export const requestPasswordResetOtpService = async (req) => {
   user.resetOtpLastSentAt = new Date();
   await user.save();
 
-  // Requires a WhatsApp template named "password_reset_otp" approved on
-  // Meta/Flaxxa with body: "Your password reset OTP is {{1}}. It is valid
-  // for 10 minutes. If you did not request this, please ignore this message."
-  await sendWhatsappMessage(templeDevote.phoneNumber, "password_reset_otp", [
+  // Uses the approved WhatsApp template named "otp" (Meta/Flaxxa).
+  await sendWhatsappMessage(templeDevote.phoneNumber, "otp", [
     { type: "text", text: otp },
   ]);
 
