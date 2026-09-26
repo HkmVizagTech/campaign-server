@@ -4,7 +4,7 @@ import { AppError } from "../utils/AppError.js";
 import bcrypt, { genSalt } from "bcrypt";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
-import { sendWhatsappMessage } from "./whatsapp.service.js";
+import { sendOtpWhatsappMessage } from "./whatsapp.service.js";
 import { normalizePhoneNumber } from "../utils/utils.js";
 
 export const registerService = async (req) => {
@@ -216,10 +216,10 @@ export const requestPasswordResetOtpService = async (req) => {
   user.resetOtpLastSentAt = new Date();
   await user.save();
 
-  // Uses the approved WhatsApp template named "otp" (Meta/Flaxxa).
-  await sendWhatsappMessage(normalizedPhone, "otp", [
-    { type: "text", text: otp },
-  ]);
+  // Uses the approved WhatsApp AUTHENTICATION template named "otp".
+  // These require the code to appear twice (body + button component) —
+  // see sendOtpWhatsappMessage.
+  await sendOtpWhatsappMessage(normalizedPhone, "otp", otp);
 
   return {
     status: 200,
