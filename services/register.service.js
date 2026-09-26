@@ -1,7 +1,10 @@
 import Register from "../models/register.modal.js";
+import TempleDevote from "../models/templeDevote.model.js";
 import { AppError } from "../utils/AppError.js";
 import bcrypt, { genSalt } from "bcrypt";
+import crypto from "crypto";
 import jwt from "jsonwebtoken";
+import { sendWhatsappMessage } from "./whatsapp.service.js";
 
 export const registerService = async (req) => {
   const { name, email, password } = req.body;
@@ -146,5 +149,124 @@ export const getAdminDetailsService = async (req) => {
     status: 200,
     message: "details fetched successfully",
     data: details,
+  };
+};
+
+const OTP_EXPIRY_MINUTES = 10;
+const OTP_RESEND_COOLDOWN_SECONDS = 60;
+
+export const requestPasswordResetOtpService = async (req) => {
+  const { email } = req.body;
+
+  if (!email || !email.trim()) {
+    throw new AppError("Email is required", 400);
+  }
+
+  const user = await Register.findOne({ email: email.trim().toLowerCase() });
+
+  if (!user) {
+    throw new AppError("No account found for this email", 404);
+  }
+
+  // A devotee's phone number lives on their linked TempleDevote record,
+  // not on Register itself.
+  const templeDevote = await TempleDevote.findOne({ userId: user._id }).select(
+    "phoneNumber",
+  );
+
+  if (!templeDevote?.phoneNumber) {
+    throw new AppError(
+      "No phone number linked to this account. Please contact an admin to reset your password.",
+      400,
+    );
+  }
+
+  if (
+    user.resetOtpLastSentAt &&
+    Date.now() - user.resetOtpLastSentAt.getTime() <
+      OTP_RESEND_COOLDOWN_SECONDS * 1000
+  ) {
+    const waitSeconds = Math.ceil(
+      (OTP_RESEND_COOLDOWN_SECONDS * 1000 -
+        (Date.now() - user.resetOtpLastSentAt.getTime())) /
+        1000,
+    );
+    throw new AppError(
+      `Please wait ${waitSeconds}s before requesting another OTP`,
+      429,
+    );
+  }
+
+  const otp = crypto.randomInt(100000, 999999).toString();
+  const salt = await genSalt(10);
+  const otpHash = await bcrypt.hash(otp, salt);
+
+  user.resetOtpHash = otpHash;
+  user.resetOtpExpires = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+  user.resetOtpLastSentAt = new Date();
+  await user.save();
+
+  // Requires a WhatsApp template named "password_reset_otp" approved on
+  // Meta/Flaxxa with body: "Your password reset OTP is {{1}}. It is valid
+  // for 10 minutes. If you did not request this, please ignore this message."
+  await sendWhatsappMessage(templeDevote.phoneNumber, "password_reset_otp", [
+    { type: "text", text: otp },
+  ]);
+
+  return {
+    status: 200,
+    message: `OTP sent to the phone number linked to this account, valid for ${OTP_EXPIRY_MINUTES} minutes`,
+  };
+};
+
+export const resetPasswordWithOtpService = async (req) => {
+  const { email, otp, newPassword } = req.body;
+
+  if (!email || !email.trim()) {
+    throw new AppError("Email is required", 400);
+  }
+  if (!otp || !otp.trim()) {
+    throw new AppError("OTP is required", 400);
+  }
+  if (!newPassword || newPassword.trim().length < 6) {
+    throw new AppError("New password must be at least 6 characters", 400);
+  }
+
+  const user = await Register.findOne({ email: email.trim().toLowerCase() });
+
+  if (!user) {
+    throw new AppError("No account found for this email", 404);
+  }
+
+  if (!user.resetOtpHash || !user.resetOtpExpires) {
+    throw new AppError("No OTP requested. Please request a new OTP.", 400);
+  }
+
+  if (user.resetOtpExpires.getTime() < Date.now()) {
+    user.resetOtpHash = null;
+    user.resetOtpExpires = null;
+    await user.save();
+    throw new AppError("OTP has expired. Please request a new one.", 400);
+  }
+
+  const isOtpValid = await bcrypt.compare(otp.trim(), user.resetOtpHash);
+
+  if (!isOtpValid) {
+    throw new AppError("Invalid OTP", 400);
+  }
+
+  const salt = await genSalt(10);
+  const newHashPassword = await bcrypt.hash(newPassword, salt);
+
+  user.password = newHashPassword;
+  user.isPasswordChanged = true;
+  user.resetOtpHash = null;
+  user.resetOtpExpires = null;
+  user.resetOtpLastSentAt = null;
+  await user.save();
+
+  return {
+    status: 200,
+    message: "Password reset successfully. You can now log in.",
   };
 };

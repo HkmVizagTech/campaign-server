@@ -24,6 +24,9 @@ const registerSchema = new mongoose.Schema(
       enum: ["admin", "devotee", "superAdmin"],
     },
     isPasswordChanged: { type: Boolean, default: false },
+    resetOtpHash: { type: String, default: null },
+    resetOtpExpires: { type: Date, default: null },
+    resetOtpLastSentAt: { type: Date, default: null },
   },
   {
     timestamps: true,

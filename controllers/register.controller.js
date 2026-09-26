@@ -2,7 +2,9 @@ import {
   getAdminDetailsService,
   loginService,
   registerService,
+  requestPasswordResetOtpService,
   resetPasswordService,
+  resetPasswordWithOtpService,
 } from "../services/register.service.js";
 import { asyncHandlers } from "../utils/handlers.js";
 import { response } from "../utils/response.js";
@@ -25,5 +27,15 @@ export const getAdminDetails = asyncHandlers(async (req, res) => {
 
 export const resetPassword = asyncHandlers(async (req, res) => {
   const { status, message } = await resetPasswordService(req);
+  response(res, status, message);
+});
+
+export const requestPasswordResetOtp = asyncHandlers(async (req, res) => {
+  const { status, message } = await requestPasswordResetOtpService(req);
+  response(res, status, message);
+});
+
+export const resetPasswordWithOtp = asyncHandlers(async (req, res) => {
+  const { status, message } = await resetPasswordWithOtpService(req);
   response(res, status, message);
 });
