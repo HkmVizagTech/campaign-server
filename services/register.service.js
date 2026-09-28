@@ -219,7 +219,18 @@ export const requestPasswordResetOtpService = async (req) => {
   // Uses the approved WhatsApp AUTHENTICATION template named "otp".
   // These require the code to appear twice (body + button component) —
   // see sendOtpWhatsappMessage.
-  await sendOtpWhatsappMessage(normalizedPhone, "otp", otp);
+  try {
+    await sendOtpWhatsappMessage(normalizedPhone, "otp", otp);
+  } catch (error) {
+    user.resetOtpHash = null;
+    user.resetOtpExpires = null;
+    user.resetOtpLastSentAt = null;
+    await user.save();
+    throw new AppError(
+      "Could not send OTP on WhatsApp right now. Please try again shortly.",
+      502,
+    );
+  }
 
   return {
     status: 200,

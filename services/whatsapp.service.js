@@ -49,51 +49,47 @@ export const sendRecieptWhatsapp = async (
   }
 };
 
+// Ported from the proven FOLK / HKM site integration (same "otp" template).
+// Authentication templates: Meta rewrites the copy-code button into a URL
+// button at approval time, so the code must be supplied TWICE — body variable
+// and button URL parameter. sub_type "copy_code" is rejected (#132018) and
+// omitting the button is rejected (#131008).
+// Flaxxa returns HTTP 200 even when Meta rejects the message — the ONLY
+// reliable success signal is a non-null message_wamid.
 export const sendOtpWhatsappMessage = async (phone, template, otp) => {
-  try {
-    const form = new FormData();
-    form.append("token", process.env.FLAXXA_TOKEN);
-    form.append("phone", phone);
-    form.append("template_name", template);
-    form.append("template_language", "en");
-    form.append(
-      "components",
-      JSON.stringify([
-        {
-          type: "body",
-          parameters: [{ type: "text", text: otp }],
-        },
-        // Authentication templates with a Copy Code button REQUIRE the
-        // same code to appear again here — Meta silently drops the
-        // message (accepted by the BSP, but never actually dispatched,
-        // wamid stays null) if this button component is missing.
-        {
-          type: "button",
-          sub_type: "copy_code",
-          index: "0",
-          parameters: [{ type: "coupon_code", coupon_code: otp }],
-        },
-      ]),
-    );
+  const components = [
+    { type: "body", parameters: [{ type: "text", text: String(otp) }] },
+    {
+      type: "button",
+      sub_type: "url",
+      index: "0",
+      parameters: [{ type: "text", text: String(otp) }],
+    },
+  ];
 
-    const response = await axios.post(
-      "https://wapi.flaxxa.com/api/v1/sendtemplatemessage_withattachment",
-      form,
-      {
-        headers: form.getHeaders(),
-      },
-    );
+  const response = await axios.post(
+    "https://wapi.flaxxa.com/api/v1/sendtemplatemessage",
+    {
+      token: process.env.FLAXXA_TOKEN,
+      phone,
+      template_name: template,
+      template_language: "en",
+      components,
+    },
+    { headers: { "Content-Type": "application/json" }, timeout: 15000 },
+  );
 
-    console.log("WhatsApp OTP sent:", response.data);
-
-    return response.data;
-  } catch (error) {
+  const wamid = response.data?.message_wamid || response.data?.wamid;
+  if (!wamid) {
     console.error(
-      "WhatsApp OTP Error:",
-      error.response?.data || error.message,
+      `WhatsApp OTP rejected for ${phone}:`,
+      JSON.stringify(response.data).slice(0, 300),
     );
-    throw error;
+    throw new Error("WhatsApp did not accept the OTP message");
   }
+
+  console.log(`WhatsApp OTP sent to ${phone} (wamid ${wamid})`);
+  return response.data;
 };
 
 export const sendWhatsappMessage = async (phone,template, params = []) => {
