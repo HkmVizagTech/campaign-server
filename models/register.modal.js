@@ -27,6 +27,10 @@ const registerSchema = new mongoose.Schema(
     resetOtpHash: { type: String, default: null },
     resetOtpExpires: { type: Date, default: null },
     resetOtpLastSentAt: { type: Date, default: null },
+    resetOtpAttempts: { type: Number, default: 0 },
+    // Optional WhatsApp number on the account itself — lets admins (who have
+    // no linked devotee record) receive OTPs.
+    phoneNumber: { type: String, trim: true, default: null },
   },
   {
     timestamps: true,

@@ -1,6 +1,7 @@
 import {
   getAdminDetailsService,
   loginService,
+  loginWithOtpService,
   registerService,
   requestPasswordResetOtpService,
   resetPasswordService,
@@ -38,4 +39,9 @@ export const requestPasswordResetOtp = asyncHandlers(async (req, res) => {
 export const resetPasswordWithOtp = asyncHandlers(async (req, res) => {
   const { status, message } = await resetPasswordWithOtpService(req);
   response(res, status, message);
+});
+
+export const loginWithOtp = asyncHandlers(async (req, res) => {
+  const { status, message, data } = await loginWithOtpService(req);
+  response(res, status, message, data);
 });

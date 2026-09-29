@@ -2,6 +2,7 @@ import express from "express";
 import {
   getAdminDetails,
   login,
+  loginWithOtp,
   register,
   requestPasswordResetOtp,
   resetPassword,
@@ -27,5 +28,7 @@ registerRouter.post("/reset-password", verifyToken, resetPassword);
 // cannot log in at all.
 registerRouter.post("/forgot-password", requestPasswordResetOtp);
 registerRouter.post("/reset-password-otp", resetPasswordWithOtp);
+// OTP login: request the code via /forgot-password, then verify here.
+registerRouter.post("/login-otp", loginWithOtp);
 
 export default registerRouter;

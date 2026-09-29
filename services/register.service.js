@@ -8,7 +8,7 @@ import { sendOtpWhatsappMessage } from "./whatsapp.service.js";
 import { normalizePhoneNumber } from "../utils/utils.js";
 
 export const registerService = async (req) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, phoneNumber } = req.body;
   const role = req.headers["role"];
 
   if (!name || !name.trim()) {
@@ -37,6 +37,7 @@ export const registerService = async (req) => {
     email,
     password: hashPassword,
     role,
+    ...(phoneNumber?.trim() && { phoneNumber: phoneNumber.trim() }),
   });
 
   return {
@@ -155,6 +156,57 @@ export const getAdminDetailsService = async (req) => {
 
 const OTP_EXPIRY_MINUTES = 10;
 const OTP_RESEND_COOLDOWN_SECONDS = 60;
+const OTP_MAX_ATTEMPTS = 5;
+
+// Phone lookup order: an explicit phone on the account itself (works for
+// admins, who have no devotee record), then the linked TempleDevote phone.
+const resolveUserPhone = async (user) => {
+  if (user.phoneNumber) return user.phoneNumber;
+
+  const templeDevote = await TempleDevote.findOne({ userId: user._id }).select(
+    "phoneNumber",
+  );
+  return templeDevote?.phoneNumber || null;
+};
+
+const clearOtp = (user) => {
+  user.resetOtpHash = null;
+  user.resetOtpExpires = null;
+  user.resetOtpAttempts = 0;
+};
+
+// Shared by password-reset and OTP-login: validates the code, enforces expiry
+// and a max number of wrong attempts, and consumes the OTP on success.
+const verifyAndConsumeOtp = async (user, otp) => {
+  if (!user.resetOtpHash || !user.resetOtpExpires) {
+    throw new AppError("No OTP requested. Please request a new OTP.", 400);
+  }
+
+  if (user.resetOtpExpires.getTime() < Date.now()) {
+    clearOtp(user);
+    await user.save();
+    throw new AppError("OTP has expired. Please request a new one.", 400);
+  }
+
+  const isOtpValid = await bcrypt.compare(otp.trim(), user.resetOtpHash);
+
+  if (!isOtpValid) {
+    user.resetOtpAttempts = (user.resetOtpAttempts || 0) + 1;
+    if (user.resetOtpAttempts >= OTP_MAX_ATTEMPTS) {
+      clearOtp(user);
+      await user.save();
+      throw new AppError(
+        "Too many wrong attempts. Please request a new OTP.",
+        429,
+      );
+    }
+    await user.save();
+    throw new AppError("Invalid OTP", 400);
+  }
+
+  clearOtp(user);
+  user.resetOtpLastSentAt = null;
+};
 
 export const requestPasswordResetOtpService = async (req) => {
   const { email } = req.body;
@@ -169,20 +221,16 @@ export const requestPasswordResetOtpService = async (req) => {
     throw new AppError("No account found for this email", 404);
   }
 
-  // A devotee's phone number lives on their linked TempleDevote record,
-  // not on Register itself.
-  const templeDevote = await TempleDevote.findOne({ userId: user._id }).select(
-    "phoneNumber",
-  );
+  const phone = await resolveUserPhone(user);
 
-  if (!templeDevote?.phoneNumber) {
+  if (!phone) {
     throw new AppError(
-      "No phone number linked to this account. Please contact an admin to reset your password.",
+      "No phone number linked to this account. Please contact an admin to add one.",
       400,
     );
   }
 
-  const normalizedPhone = normalizePhoneNumber(templeDevote.phoneNumber);
+  const normalizedPhone = normalizePhoneNumber(phone);
 
   if (!normalizedPhone) {
     throw new AppError(
@@ -209,21 +257,17 @@ export const requestPasswordResetOtpService = async (req) => {
 
   const otp = crypto.randomInt(100000, 999999).toString();
   const salt = await genSalt(10);
-  const otpHash = await bcrypt.hash(otp, salt);
 
-  user.resetOtpHash = otpHash;
+  user.resetOtpHash = await bcrypt.hash(otp, salt);
   user.resetOtpExpires = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
   user.resetOtpLastSentAt = new Date();
+  user.resetOtpAttempts = 0;
   await user.save();
 
-  // Uses the approved WhatsApp AUTHENTICATION template named "otp".
-  // These require the code to appear twice (body + button component) —
-  // see sendOtpWhatsappMessage.
   try {
     await sendOtpWhatsappMessage(normalizedPhone, "otp", otp);
   } catch (error) {
-    user.resetOtpHash = null;
-    user.resetOtpExpires = null;
+    clearOtp(user);
     user.resetOtpLastSentAt = null;
     await user.save();
     throw new AppError(
@@ -234,7 +278,7 @@ export const requestPasswordResetOtpService = async (req) => {
 
   return {
     status: 200,
-    message: `OTP sent to the phone number linked to this account, valid for ${OTP_EXPIRY_MINUTES} minutes`,
+    message: `OTP sent to the WhatsApp number linked to this account, valid for ${OTP_EXPIRY_MINUTES} minutes`,
   };
 };
 
@@ -257,35 +301,59 @@ export const resetPasswordWithOtpService = async (req) => {
     throw new AppError("No account found for this email", 404);
   }
 
-  if (!user.resetOtpHash || !user.resetOtpExpires) {
-    throw new AppError("No OTP requested. Please request a new OTP.", 400);
-  }
-
-  if (user.resetOtpExpires.getTime() < Date.now()) {
-    user.resetOtpHash = null;
-    user.resetOtpExpires = null;
-    await user.save();
-    throw new AppError("OTP has expired. Please request a new one.", 400);
-  }
-
-  const isOtpValid = await bcrypt.compare(otp.trim(), user.resetOtpHash);
-
-  if (!isOtpValid) {
-    throw new AppError("Invalid OTP", 400);
-  }
+  await verifyAndConsumeOtp(user, otp);
 
   const salt = await genSalt(10);
-  const newHashPassword = await bcrypt.hash(newPassword, salt);
-
-  user.password = newHashPassword;
+  user.password = await bcrypt.hash(newPassword, salt);
   user.isPasswordChanged = true;
-  user.resetOtpHash = null;
-  user.resetOtpExpires = null;
-  user.resetOtpLastSentAt = null;
   await user.save();
 
   return {
     status: 200,
     message: "Password reset successfully. You can now log in.",
+  };
+};
+
+// Passwordless login with the WhatsApp OTP — available to every role,
+// including admin. The OTP is requested via requestPasswordResetOtpService.
+export const loginWithOtpService = async (req) => {
+  const { email, otp } = req.body;
+
+  if (!email || !email.trim()) {
+    throw new AppError("Email is required", 400);
+  }
+  if (!otp || !otp.trim()) {
+    throw new AppError("OTP is required", 400);
+  }
+
+  const user = await Register.findOne({ email: email.trim().toLowerCase() });
+
+  if (!user) {
+    throw new AppError("Invalid credentials", 401);
+  }
+
+  await verifyAndConsumeOtp(user, otp);
+  await user.save();
+
+  const token = jwt.sign(
+    {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" },
+  );
+
+  return {
+    status: 200,
+    message: "Login successfully",
+    data: {
+      token,
+      name: user.name,
+      role: user.role,
+      isPasswordChanged: user.isPasswordChanged,
+    },
   };
 };
