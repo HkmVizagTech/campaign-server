@@ -1,6 +1,7 @@
 import express from "express";
 import {
   cardSummary,
+  devoteeCampaignersExport,
   devoteeReport,
   donationTrend,
   prasadamReport,
@@ -23,6 +24,7 @@ const dashboardRouter = express.Router();
 dashboardRouter.get("/summary", verifyToken, authorizeRole("admin", "devotee"), cardSummary);
 dashboardRouter.get("/donation-trend", verifyToken, authorizeRole("admin", "devotee"), donationTrend);
 dashboardRouter.get("/reports/devotee-summary", verifyToken, authorizeRole("admin", "superAdmin"), devoteeReport);
+dashboardRouter.get("/reports/devotee-campaigners-export", verifyToken, authorizeRole("admin", "superAdmin"), devoteeCampaignersExport);
 dashboardRouter.get("/reports/prasadam", verifyToken, authorizeRole("admin", "superAdmin"), prasadamReport);
 
 dashboardRouter.get(

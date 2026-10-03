@@ -1,3 +1,4 @@
+import ExcelJS from "exceljs";
 import Campaign from "../models/campaign.model.js";
 import Campaigner from "../models/campaigner.model.js";
 import Donation from "../models/donation.model.js";
@@ -379,6 +380,8 @@ export const devoteeReportService = async (req) => {
             name: "$name",
             status: "$status",
             slug: "$slug",
+            phoneNumber: "$phoneNumber",
+            targetAmount: "$targetAmount",
             raisedAmount: {
               $ifNull: [
                 { $arrayElemAt: ["$donationStats.totalRaised", 0] },
@@ -491,4 +494,136 @@ export const prasadamReportService = async (req) => {
       },
     },
   };
+};
+
+
+const safeSheetName = (raw, used) => {
+  // Excel: max 31 chars, none of [ ] : * ? / \\, must be unique (case-insens.)
+  let base = String(raw || "Devotee")
+    .replace(/[\[\]:*?/\\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 31) || "Devotee";
+  let name = base;
+  let n = 2;
+  while (used.has(name.toLowerCase())) {
+    const suffix = ` (${n++})`;
+    name = base.slice(0, 31 - suffix.length) + suffix;
+  }
+  used.add(name.toLowerCase());
+  return name;
+};
+
+// One sheet per devotee listing their campaigners: name, phone, target.
+export const devoteeCampaignersWorkbookService = async (req) => {
+  const { campaignId } = req.query;
+
+  if (campaignId && !mongoose.isValidObjectId(campaignId)) {
+    throw new AppError("Invalid campaignId", 400);
+  }
+
+  const match = {};
+  if (campaignId) match.campaignId = new mongoose.Types.ObjectId(campaignId);
+
+  const campaigners = await Campaigner.find(match)
+    .select("name phoneNumber targetAmount status templeDevoteInTouch")
+    .populate("templeDevoteInTouch", "devoteName shortForm phoneNumber")
+    .sort({ name: 1 })
+    .lean();
+
+  // Group by devotee
+  const byDevotee = new Map();
+  for (const c of campaigners) {
+    const d = c.templeDevoteInTouch;
+    const key = d?._id ? String(d._id) : "unassigned";
+    if (!byDevotee.has(key)) {
+      byDevotee.set(key, {
+        devoteeName: d?.devoteName || "Unassigned",
+        shortForm: d?.shortForm || "",
+        campaigners: [],
+      });
+    }
+    byDevotee.get(key).campaigners.push(c);
+  }
+
+  const devotees = [...byDevotee.values()].sort((a, b) =>
+    a.devoteeName.localeCompare(b.devoteeName),
+  );
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "HKM Vizag Campaigner Platform";
+  wb.created = new Date();
+
+  const headerFill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FFE8EEF7" },
+  };
+  const styleHeader = (row) => {
+    row.font = { bold: true };
+    row.fill = headerFill;
+    row.alignment = { vertical: "middle" };
+  };
+
+  const used = new Set(["summary"]);
+  const summary = wb.addWorksheet("Summary");
+  summary.columns = [
+    { header: "Devotee", key: "devotee", width: 30 },
+    { header: "Campaigners", key: "count", width: 14 },
+    { header: "Total Target (₹)", key: "target", width: 18, style: { numFmt: "#,##0" } },
+  ];
+  styleHeader(summary.getRow(1));
+
+  let grandTarget = 0;
+  let grandCount = 0;
+
+  for (const d of devotees) {
+    const sheet = wb.addWorksheet(
+      safeSheetName(d.shortForm ? `${d.devoteeName} (${d.shortForm})` : d.devoteeName, used),
+    );
+
+    sheet.columns = [
+      { header: "S.No", key: "sno", width: 7 },
+      { header: "Campaigner Name", key: "name", width: 32 },
+      { header: "Phone Number", key: "phone", width: 16 },
+      { header: "Target (₹)", key: "target", width: 14, style: { numFmt: "#,##0" } },
+      { header: "Status", key: "status", width: 12 },
+    ];
+    styleHeader(sheet.getRow(1));
+    sheet.views = [{ state: "frozen", ySplit: 1 }];
+
+    let total = 0;
+    d.campaigners.forEach((c, i) => {
+      total += c.targetAmount || 0;
+      sheet.addRow({
+        sno: i + 1,
+        name: c.name,
+        // keep as text so Excel doesn't drop leading zeros / use sci. notation
+        phone: String(c.phoneNumber || ""),
+        target: c.targetAmount || 0,
+        status: c.status || "",
+      });
+    });
+
+    const totalRow = sheet.addRow({ name: "Total", target: total });
+    totalRow.font = { bold: true };
+
+    summary.addRow({
+      devotee: d.shortForm ? `${d.devoteeName} (${d.shortForm})` : d.devoteeName,
+      count: d.campaigners.length,
+      target: total,
+    });
+    grandTarget += total;
+    grandCount += d.campaigners.length;
+  }
+
+  const grand = summary.addRow({
+    devotee: "Grand Total",
+    count: grandCount,
+    target: grandTarget,
+  });
+  grand.font = { bold: true };
+
+  const buffer = await wb.xlsx.writeBuffer();
+  return { buffer, sheets: devotees.length };
 };
