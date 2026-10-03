@@ -84,6 +84,8 @@ const donationSchema = new mongoose.Schema(
       unique: true,
       sparse: true,
     },
+    // Actual date of the UPI transaction (calendar date, stored at 00:00 UTC)
+    paymentDate: Date,
     dccDataSentAt: Date,
     dccApiResponse: Object,
     dccRequestPayload: Object,

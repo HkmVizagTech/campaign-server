@@ -48,7 +48,12 @@ export const dccApiService = async (
       donation?.gatewayPaymentId ||
       donation?.paymentReference ||
       null,
-    transactionDate: donation.createdAt.toLocaleDateString("en-GB"),
+    // Manually recorded UPI donations carry the real transaction date
+    // (stored as a calendar date at 00:00 UTC); everything else uses the
+    // time the donation was created.
+    transactionDate: donation.paymentDate
+      ? donation.paymentDate.toLocaleDateString("en-GB", { timeZone: "UTC" })
+      : donation.createdAt.toLocaleDateString("en-GB"),
     enrolledBy: donation?.campaigner?.templeDevoteInTouch?.devoteeID || null,
   };
 

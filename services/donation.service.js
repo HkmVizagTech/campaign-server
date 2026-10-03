@@ -409,6 +409,7 @@ export const createOfflineDonationService = async (req) => {
     isAnonymous,
     receiptNumber, // optional: receipt already generated externally
     paymentReference, // required for UPI: UTR / transaction ID
+    paymentDate, // required for UPI: transaction date, YYYY-MM-DD
     sevaId, // optional: which seva this cash donation is for — determines DCC codes
   } = req.body;
 
@@ -460,6 +461,7 @@ export const createOfflineDonationService = async (req) => {
   // UPI donations must carry the transaction reference so every online
   // payment recorded here can be traced and can't be entered twice.
   let upiReference;
+  let upiPaymentDate;
   if (mode === "upi") {
     upiReference = String(paymentReference || "")
       .replace(/\s+/g, "")
@@ -477,6 +479,30 @@ export const createOfflineDonationService = async (req) => {
         400,
       );
     }
+
+    if (!paymentDate) {
+      throw new AppError(
+        "Transaction date is required for UPI donations",
+        400,
+      );
+    }
+    const dateStr = String(paymentDate).slice(0, 10);
+    const parsed = new Date(`${dateStr}T00:00:00.000Z`);
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(dateStr) ||
+      Number.isNaN(parsed.getTime()) ||
+      parsed.toISOString().slice(0, 10) !== dateStr
+    ) {
+      throw new AppError("Transaction date is invalid (use YYYY-MM-DD)", 400);
+    }
+    // "Today" in India (IST = UTC+5:30) — a UPI payment can't be dated later
+    const todayIst = new Date(Date.now() + 5.5 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    if (dateStr > todayIst) {
+      throw new AppError("Transaction date cannot be in the future", 400);
+    }
+    upiPaymentDate = parsed;
 
     const duplicateRef = await Donation.findOne({
       paymentReference: upiReference,
@@ -516,7 +542,10 @@ export const createOfflineDonationService = async (req) => {
     pan: pan?.trim()?.toUpperCase() || undefined,
     paymentGateway: mode,
     seva: sevaId || null,
-    ...(upiReference && { paymentReference: upiReference }),
+    ...(upiReference && {
+      paymentReference: upiReference,
+      paymentDate: upiPaymentDate,
+    }),
     // Receipt already generated externally — record it and mark as synced
     // so the DCC flow never runs for this donation
     ...(existingReceipt && {
