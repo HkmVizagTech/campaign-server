@@ -421,13 +421,31 @@ export const devoteeReportService = async (req) => {
 
   const results = await Campaigner.aggregate(pipeline);
 
+  // Committed target = sum of the targets campaigners have committed to.
+  // Rejected campaigners haven't committed to anything, so they're excluded.
+  for (const d of results) {
+    const committed = d.campaigners.filter((c) => c.status !== "reject");
+    d.committedCampaigners = committed.length;
+    d.committedTarget = committed.reduce(
+      (sum, c) => sum + (c.targetAmount || 0),
+      0,
+    );
+  }
+
   const grandTotal = results.reduce(
     (acc, d) => {
       acc.totalRaised += d.totalRaised;
       acc.donorCount += d.donorCount;
+      acc.committedTarget += d.committedTarget;
+      acc.committedCampaigners += d.committedCampaigners;
       return acc;
     },
-    { totalRaised: 0, donorCount: 0 },
+    {
+      totalRaised: 0,
+      donorCount: 0,
+      committedTarget: 0,
+      committedCampaigners: 0,
+    },
   );
 
   return {
