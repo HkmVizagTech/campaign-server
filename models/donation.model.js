@@ -75,6 +75,15 @@ const donationSchema = new mongoose.Schema(
       unique: true,
       sparse: true,
     },
+    // UPI transaction reference (UTR / transaction ID) for UPI donations
+    // recorded manually via the admin/devotee "Add Cash Donation" form.
+    paymentReference: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      unique: true,
+      sparse: true,
+    },
     dccDataSentAt: Date,
     dccApiResponse: Object,
     dccRequestPayload: Object,

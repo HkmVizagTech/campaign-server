@@ -408,6 +408,7 @@ export const createOfflineDonationService = async (req) => {
     paymentMode, // "cash" | "upi" | "cheque" | "bank_transfer"
     isAnonymous,
     receiptNumber, // optional: receipt already generated externally
+    paymentReference, // required for UPI: UTR / transaction ID
     sevaId, // optional: which seva this cash donation is for — determines DCC codes
   } = req.body;
 
@@ -456,6 +457,38 @@ export const createOfflineDonationService = async (req) => {
     }
   }
 
+  // UPI donations must carry the transaction reference so every online
+  // payment recorded here can be traced and can't be entered twice.
+  let upiReference;
+  if (mode === "upi") {
+    upiReference = String(paymentReference || "")
+      .replace(/\s+/g, "")
+      .toUpperCase();
+
+    if (!upiReference) {
+      throw new AppError(
+        "UPI reference number (UTR / transaction ID) is required for UPI donations",
+        400,
+      );
+    }
+    if (!/^[A-Z0-9]{8,35}$/.test(upiReference)) {
+      throw new AppError(
+        "UPI reference number must be 8–35 letters/digits (e.g. the 12-digit UTR)",
+        400,
+      );
+    }
+
+    const duplicateRef = await Donation.findOne({
+      paymentReference: upiReference,
+    }).select("_id donorName");
+    if (duplicateRef) {
+      throw new AppError(
+        `UPI reference ${upiReference} is already recorded for another donation`,
+        409,
+      );
+    }
+  }
+
   const existingReceipt = receiptNumber?.trim();
 
   if (existingReceipt) {
@@ -483,6 +516,7 @@ export const createOfflineDonationService = async (req) => {
     pan: pan?.trim()?.toUpperCase() || undefined,
     paymentGateway: mode,
     seva: sevaId || null,
+    ...(upiReference && { paymentReference: upiReference }),
     // Receipt already generated externally — record it and mark as synced
     // so the DCC flow never runs for this donation
     ...(existingReceipt && {

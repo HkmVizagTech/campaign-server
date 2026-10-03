@@ -41,7 +41,13 @@ export const dccApiService = async (
     sevaSubCategory: donation?.seva?.sevaSubCategoryId || 119,
     sevaSubCategoryCode: donation?.seva?.sevaSubCode || null,
     modeOfPayment,
-    gatewayPaymentId: gatewayPaymentId || donation?.gatewayPaymentId || null,
+    // Online: Razorpay payment id. Manually recorded UPI donations: the UPI
+    // transaction reference (UTR) entered by the admin/devotee.
+    gatewayPaymentId:
+      gatewayPaymentId ||
+      donation?.gatewayPaymentId ||
+      donation?.paymentReference ||
+      null,
     transactionDate: donation.createdAt.toLocaleDateString("en-GB"),
     enrolledBy: donation?.campaigner?.templeDevoteInTouch?.devoteeID || null,
   };
