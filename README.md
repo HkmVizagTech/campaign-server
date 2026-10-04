@@ -55,7 +55,7 @@ iskcon-vizag-server/
 ├── routes/                 # API route definitions
 ├── scripts/                # Manual maintenance and recovery scripts
 ├── utils/                  # Response helpers, GCS upload, DCC integration
-├── receipt-template.pdf    # PDF template used for generated receipts
+├── assets/receipt/         # Logo and seal drawn on generated receipts
 ├── Dockerfile
 └── cloudbuild.yaml
 ```
@@ -339,19 +339,19 @@ The donation/payment lifecycle in the current code is:
 
 ## Receipt Generation
 
-Receipts are generated dynamically from `receipt-template.pdf` using `pdf-lib`.
+Receipts are drawn with `pdf-lib` (`services/receipt.service.js`) in the same
+layout DCC uses for its receipts: A4, Helvetica, with the logo and seal from
+`assets/receipt/`. Names in other scripts fall back to the Unicode font in
+`assets/fonts/` (subset, so only the glyphs used are embedded).
 
-The generated PDF fills fields such as:
+The receipt shows:
 
-- donor name
-- phone number
-- amount and amount in words
-- transaction date
-- address
-- PAN / 80G flag
-- email
-- gateway payment id
-- enrolled-by short form
+- DR number (DCC receipt number), date and patronship number
+- donor name, address, mobile, email (`DEFAULT_DONOR_EMAIL` when blank) and PAN / 80G flag
+- Sevak Name: the person the donation is made in honour of, if any
+- amount and amount in words (Indian numbering)
+- payment mode, gateway payment id / UPI reference and transaction date
+- enrolled-by / CDC short form and the seva it goes towards
 
 ## External Integrations
 
