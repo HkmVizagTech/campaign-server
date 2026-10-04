@@ -138,22 +138,36 @@ const PAYMENT_MODE_LABELS = {
   bank_transfer: "Bank Transfer",
 };
 
-// DCC's patron reference; the key is not documented, so accept the likely names.
-const PATRONSHIP_KEYS = [
-  "PatronshipNo",
-  "PatronshipNumber",
-  "PatronNo",
-  "PatronId",
-  "PatronID",
-  "DonorId",
-  "DonorID",
-  "DonorCode",
-];
+// "Reference(Patronship No)" is the DCC donor id (e.g. D50574). DCC's
+// response field name isn't documented, so match the likely spellings
+// regardless of case, including one level of nesting.
+const DONOR_ID_KEYS = new Set([
+  "donorid",
+  "donorcode",
+  "donorno",
+  "donornumber",
+  "patronshipno",
+  "patronshipnumber",
+  "patronid",
+  "patronno",
+]);
 
-const getPatronshipNo = (dccData) => {
-  if (!dccData || typeof dccData !== "object") return "";
-  const key = PATRONSHIP_KEYS.find((k) => dccData[k]);
-  return key ? String(dccData[key]) : "";
+const getDonorId = (dccData, depth = 0) => {
+  if (!dccData || typeof dccData !== "object" || depth > 1) return "";
+
+  for (const [key, value] of Object.entries(dccData)) {
+    const normalized = key.toLowerCase().replace(/[^a-z]/g, "");
+    if (DONOR_ID_KEYS.has(normalized) && value != null && value !== "") {
+      return String(value);
+    }
+  }
+
+  for (const value of Object.values(dccData)) {
+    const nested = getDonorId(value, depth + 1);
+    if (nested) return nested;
+  }
+
+  return "";
 };
 
 const formatAddress = (address) => {
@@ -315,7 +329,7 @@ export const generateReceiptBuffer = async (donationId) => {
   draw(25, 507.47, [plain(`Address : ${formatAddress(donationDetails.address)}`)]);
   draw(25, 490.4, [
     plain("Reference(Patronship No) :"),
-    bold(` ${getPatronshipNo(dccData)}`),
+    bold(` ${getDonorId(dccData)}`),
   ]);
   const sevak = [plain("Sevak Name : "), plain(sevakName)];
   draw(352, 490.4, sevak, { size: fitSize(sevak, RIGHT_EDGE + 15 - 352) });
