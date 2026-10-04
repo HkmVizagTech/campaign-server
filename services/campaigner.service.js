@@ -7,7 +7,15 @@ import { uploadToR2, deleteFromR2, getSignedImageUrl } from "../utils/R2.js";
 import TempleDevote from "../models/templeDevote.model.js";
 import Donation from "../models/donation.model.js";
 import slugify from "slugify";
-import { sendWhatsappMessage } from "./whatsapp.service.js";
+import {
+  sendWhatsappMessage,
+  sendWhatsappTemplateChecked,
+} from "./whatsapp.service.js";
+import { normalizePhoneNumber } from "../utils/utils.js";
+
+const CAMPAIGNER_PAGE_BASE_URL = "https://campaigns.harekrishnavizag.org";
+// WhatsApp template sent with the page link when a campaigner is approved.
+const APPROVAL_TEMPLATE = "campaigner_registration_link_success";
 
 const sendWhatsappTemplate = async ({
   phoneNumber,
@@ -171,7 +179,7 @@ export const createCampaignerService = async (req) => {
     { type: "text", text: newCampaigner.name },
     {
       type: "text",
-      text: `https://campaigns.harekrishnavizag.org/${newCampaigner.slug}`,
+      text: `${CAMPAIGNER_PAGE_BASE_URL}/${newCampaigner.slug}`,
     },
   ];
 
@@ -703,14 +711,14 @@ export const updateCampaignerService = async (req) => {
       { type: "text", text: updatedCampaigner.name },
       {
         type: "text",
-        text: `https://campaigns.harekrishnavizag.org/${updatedCampaigner.slug}`,
+        text: `${CAMPAIGNER_PAGE_BASE_URL}/${updatedCampaigner.slug}`,
       },
     ];
 
     try {
       await sendWhatsappMessage(
         campaignerPhoneNumber,
-        "campaigner_registration_link_success",
+        APPROVAL_TEMPLATE,
         params,
       );
       console.log("✅ WhatsApp notification sent");
@@ -757,5 +765,96 @@ export const deleteCampaignerService = async (req) => {
     status: 200,
     message: "campaigner deleted successfully",
     data: campaigner,
+  };
+};
+
+// Re-sends every approved (active) campaigner of a campaign their page link
+// on WhatsApp, with the same template sent when a campaigner is approved.
+export const resendCampaignerLinksService = async (req) => {
+  const { campaignId, dryRun } = req.body ?? {};
+
+  let campaign;
+  if (campaignId) {
+    if (!mongoose.isValidObjectId(campaignId)) {
+      throw new AppError(`Invalid campaignId: ${campaignId}`, 400);
+    }
+    campaign = await Campaign.findById(campaignId).select("title");
+  } else {
+    const now = new Date();
+    campaign = await Campaign.findOne({
+      startDate: { $lte: now },
+      endDate: { $gte: now },
+    }).select("title");
+  }
+
+  if (!campaign) {
+    throw new AppError("Campaign not found", 404);
+  }
+
+  const campaigners = await Campaigner.find({
+    campaignId: campaign._id,
+    status: "active",
+  })
+    .select("name phoneNumber slug")
+    .sort({ createdAt: 1 })
+    .lean();
+
+  const summary = {
+    campaign: campaign.title,
+    total: campaigners.length,
+    sent: 0,
+    failed: [],
+  };
+
+  if (dryRun === true || dryRun === "true") {
+    return {
+      status: 200,
+      message: `${campaigners.length} approved campaigners would receive their link`,
+      data: { ...summary, dryRun: true },
+    };
+  }
+
+  const sendOne = async (campaigner) => {
+    const phone = normalizePhoneNumber(campaigner.phoneNumber);
+    if (!phone || !campaigner.slug) {
+      summary.failed.push({
+        id: campaigner._id,
+        name: campaigner.name,
+        reason: !phone ? "No phone number" : "No page link",
+      });
+      return;
+    }
+
+    const result = await sendWhatsappTemplateChecked(phone, APPROVAL_TEMPLATE, [
+      { type: "text", text: campaigner.name },
+      { type: "text", text: `${CAMPAIGNER_PAGE_BASE_URL}/${campaigner.slug}` },
+    ]);
+
+    if (result.ok) {
+      summary.sent += 1;
+    } else {
+      summary.failed.push({
+        id: campaigner._id,
+        name: campaigner.name,
+        reason: result.error || "WhatsApp did not accept the message",
+      });
+    }
+  };
+
+  // A few at a time keeps the request well inside the server timeout
+  // without flooding the WhatsApp provider.
+  const CONCURRENCY = 4;
+  for (let i = 0; i < campaigners.length; i += CONCURRENCY) {
+    await Promise.all(campaigners.slice(i, i + CONCURRENCY).map(sendOne));
+  }
+
+  console.log(
+    `Resent campaigner links for "${campaign.title}": ${summary.sent}/${summary.total} sent, ${summary.failed.length} failed`,
+  );
+
+  return {
+    status: 200,
+    message: `Sent ${summary.sent} of ${summary.total} campaigner links`,
+    data: summary,
   };
 };

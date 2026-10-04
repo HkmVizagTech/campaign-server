@@ -6,6 +6,7 @@ import {
   getLastestDonorofCampaigner,
   getSingleCampaigner,
   getTopDonors,
+  resendCampaignerLinks,
   updateCampaigner,
 } from "../controllers/campaigner.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
@@ -24,6 +25,15 @@ campaignerRouter.post(
   optionalAuth,
   campaignerStatus,
   createCampaigner,
+);
+
+// Admin: WhatsApp every approved campaigner their page link again.
+// Body: { campaignId? (defaults to the running campaign), dryRun? }
+campaignerRouter.post(
+  "/resend-links",
+  verifyToken,
+  authorizeRole("admin"),
+  resendCampaignerLinks,
 );
 
 // Dynamic Routes

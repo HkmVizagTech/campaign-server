@@ -236,6 +236,7 @@ All routes below are mounted from `app.js`.
 - `GET /api/campaigner/topdonors/:campaignId` - top donors for a campaign
 - `GET /api/campaigner/latestDonors/:campaignId/:slug` - latest donors for a campaigner
 - `GET /api/campaigner/details/:slugId` - public campaigner detail page data
+- `POST /api/campaigner/resend-links` - admin: WhatsApp every approved campaigner their page link again (approval template); body `{ campaignId?, dryRun? }`
 - `GET /api/campaigner/:campaignId` - public campaigner list by campaign
 - `GET /api/campaigner/admin/:campaignId` - admin/devotee campaigner list with optional auth context
 - `PATCH /api/campaigner/:id` - update campaigner
