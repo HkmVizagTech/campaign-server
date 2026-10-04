@@ -6,6 +6,7 @@ import fs from "fs";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import numToWord from "number-to-words";
 import path from "path";
+import { DEFAULT_DONOR_EMAIL, formatInHonorOf } from "../utils/utils.js";
 
 const resolveFontPath = (fontPath) => {
   if (!fontPath) {
@@ -120,9 +121,7 @@ export const generateReceiptBuffer = async (donationId) => {
 
   const pdfDoc = await PDFDocument.load(existingPdf);
   const seva = "Mandir Nirman Seva";
-  const email = donationDetails?.donorEmail
-    ? donationDetails?.donorEmail
-    : "---";
+  const email = donationDetails?.donorEmail || DEFAULT_DONOR_EMAIL;
   const pan = donationDetails?.pan ? donationDetails?.pan : "---";
   const { font, sanitize, fontPath } = await getReceiptFont(pdfDoc);
   const form = pdfDoc.getForm();
@@ -196,6 +195,16 @@ export const generateReceiptBuffer = async (donationId) => {
     }
   });
   form.flatten();
+
+  // The template has no field for a dedication, so draw it in the blank
+  // space below the cheque note.
+  const inHonorOf = formatInHonorOf(donationDetails?.inHonorOf);
+  if (inHonorOf) {
+    pdfDoc.getPages()[0].drawText(
+      preparePdfText(`In honour of : ${inHonorOf}`, "inHonorOf", sanitize),
+      { x: 38, y: 326, size: 10, font, maxWidth: 520 },
+    );
+  }
 
   return await pdfDoc.save();
 };

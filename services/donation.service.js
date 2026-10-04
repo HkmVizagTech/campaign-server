@@ -10,6 +10,7 @@ import {
   syncDonationWithDcc,
   sendDonationNotifications,
 } from "./payment.service.js";
+import { parseInHonorOf, resolveDonorEmail } from "../utils/utils.js";
 
 const PENDING_DONATION_REUSE_WINDOW_MINUTES = 30;
 
@@ -47,12 +48,14 @@ const buildDonationPayload = ({
   pan,
   address,
   prasadam,
+  inHonorOf,
 }) => ({
   donorName,
   donorPhone,
   amount: Number(amount),
   donorEmail: email,
   isAnonymous,
+  inHonorOf,
   campaign: campaignId,
   campaigner: campaignerId,
   status: "pending",
@@ -79,6 +82,7 @@ export const createDonationOrderService = async (req) => {
     sevaId,
     address,
     prasadam,
+    inHonorOf,
   } = req.body;
 
   const requiredFields = [
@@ -102,6 +106,9 @@ export const createDonationOrderService = async (req) => {
   if (!mongoose.isValidObjectId(campaignId)) {
     throw new AppError(`Invalid campaignId: ${campaignId}`, 400);
   }
+
+  const donorEmail = resolveDonorEmail(email);
+  const honoree = parseInHonorOf(inHonorOf);
 
   if (isNaN(Number(amount))) {
     throw new AppError("Amount need be a number", 400);
@@ -147,7 +154,7 @@ export const createDonationOrderService = async (req) => {
     donorName,
     donorPhone,
     amount,
-    email,
+    email: donorEmail,
     isAnonymous,
     campaignId,
     campaignerId: isExistCampaigner._id,
@@ -155,6 +162,7 @@ export const createDonationOrderService = async (req) => {
     pan,
     address,
     prasadam,
+    inHonorOf: honoree,
   });
   const reusableDonation = await Donation.findOne(
     buildPendingDonationReuseFilter({
@@ -168,9 +176,13 @@ export const createDonationOrderService = async (req) => {
   ).sort({ createdAt: -1 });
 
   const createDonation = reusableDonation
-    ? await Donation.findByIdAndUpdate(reusableDonation._id, donationPayload, {
-        returnDocument: "after",
-      })
+    ? await Donation.findByIdAndUpdate(
+        reusableDonation._id,
+        // Undefined keys are dropped from updates, so clear a dedication
+        // left over from the earlier attempt explicitly.
+        honoree ? donationPayload : { ...donationPayload, $unset: { inHonorOf: 1 } },
+        { returnDocument: "after" },
+      )
     : await Donation.create(donationPayload);
   const isReusedDonation = Boolean(reusableDonation);
   let order;
@@ -411,6 +423,7 @@ export const createOfflineDonationService = async (req) => {
     paymentReference, // required for UPI: UTR / transaction ID
     paymentDate, // required for UPI: transaction date, YYYY-MM-DD
     sevaId, // optional: which seva this cash donation is for — determines DCC codes
+    inHonorOf, // optional: { name, occasion } — donation made in honour of someone
   } = req.body;
 
   // Required field validation
@@ -436,6 +449,9 @@ export const createOfflineDonationService = async (req) => {
   if (sevaId && !mongoose.isValidObjectId(sevaId)) {
     throw new AppError(`Invalid sevaId: ${sevaId}`, 400);
   }
+
+  const resolvedEmail = resolveDonorEmail(donorEmail);
+  const honoree = parseInHonorOf(inHonorOf);
 
   // Fetch campaigner with owner info
   const campaigner = await Campaigner.findById(campaignerId).populate(
@@ -533,12 +549,13 @@ export const createOfflineDonationService = async (req) => {
   const donation = await Donation.create({
     donorName: donorName.trim(),
     donorPhone: String(donorPhone).replace(/\D/g, "").slice(-10),
-    donorEmail: donorEmail?.trim() || undefined,
+    donorEmail: resolvedEmail,
     amount: Number(amount),
     campaign: campaigner.campaignId,
     campaigner: campaigner._id,
     status: "success",
     isAnonymous: Boolean(isAnonymous),
+    inHonorOf: honoree,
     pan: pan?.trim()?.toUpperCase() || undefined,
     paymentGateway: mode,
     seva: sevaId || null,
