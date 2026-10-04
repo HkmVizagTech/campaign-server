@@ -196,14 +196,17 @@ export const generateReceiptBuffer = async (donationId) => {
   });
   form.flatten();
 
-  // The template has no field for a dedication, so draw it in the blank
-  // space below the cheque note.
-  const inHonorOf = formatInHonorOf(donationDetails?.inHonorOf);
-  if (inHonorOf) {
-    pdfDoc.getPages()[0].drawText(
-      preparePdfText(`In honour of : ${inHonorOf}`, "inHonorOf", sanitize),
-      { x: 38, y: 326, size: 10, font, maxWidth: 520 },
-    );
+  // A donation made in honour of someone carries that person's name in the
+  // template's "Sevak Name" slot, which has no form field, so draw it there.
+  const sevakName = formatInHonorOf(donationDetails?.inHonorOf);
+  if (sevakName) {
+    const text = preparePdfText(sevakName, "sevakName", sanitize);
+    const maxWidth = 205;
+    let size = 9;
+    while (size > 6 && font.widthOfTextAtSize(text, size) > maxWidth) {
+      size -= 0.5;
+    }
+    pdfDoc.getPages()[0].drawText(text, { x: 364, y: 487, size, font });
   }
 
   return await pdfDoc.save();
