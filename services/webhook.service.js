@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import crypto from "crypto";
 import Payment from "../models/payment.model.js";
 import Donation from "../models/donation.model.js";
@@ -91,6 +92,7 @@ export const razorpayWebhookService = async (req, res) => {
           rawResponse: payment,
           donationId: payment.notes?.donationId,
           trustedPaymentStatus: payment.status,
+          deferPostCapture: true,
         });
 
         return res.json({
@@ -129,7 +131,9 @@ export const razorpayWebhookService = async (req, res) => {
         { status: "failed", rawResponse: payment },
       );
 
-      if (donationId) {
+      // Other apps share this Razorpay account, so donationId in notes may
+      // not be one of ours (or not an ObjectId at all) — never let that 500.
+      if (donationId && mongoose.isValidObjectId(donationId)) {
         await Donation.findOneAndUpdate(
           { _id: donationId, status: { $ne: "success" } },
           { status: "failed" },

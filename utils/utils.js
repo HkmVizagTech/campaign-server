@@ -122,6 +122,7 @@ export const dccApiService = async (
 
     const result = await axios.post(process.env.DCC_API, payload, {
       headers,
+      timeout: 20000,
     });
 
     return {

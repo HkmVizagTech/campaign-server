@@ -139,6 +139,39 @@ export const syncDonationWithDcc = async (
   return donation;
 };
 
+// DCC receipt + WhatsApp notifications after a donation is marked success.
+// Never throws. If it fails or the process restarts midway, the donation
+// keeps dccDataSentAt empty and the next capture attempt for the same
+// payment (webhook retry, /payment/verify, reconcile) re-runs the DCC sync.
+const runPostCapture = async (donationId, updatedCampaigner, gatewayPaymentId) => {
+  try {
+    const donationForSync = await Donation.findById(donationId)
+      .populate("seva")
+      .populate({
+        path: "campaigner",
+        select: "templeDevoteInTouch",
+        populate: {
+          path: "templeDevoteInTouch",
+          select: "devoteeID",
+        },
+      });
+
+    if (donationForSync) {
+      const syncedDonation = await syncDonationWithDcc(
+        donationForSync,
+        gatewayPaymentId,
+      );
+
+      await sendDonationNotifications(syncedDonation, updatedCampaigner);
+    }
+  } catch (error) {
+    console.error(
+      `Payment captured but post-capture sync failed for donation ${donationId}:`,
+      error,
+    );
+  }
+};
+
 export const capturePaymentService = async ({
   gatewayOrderId,
   gatewayPaymentId,
@@ -152,6 +185,10 @@ export const capturePaymentService = async ({
   // caller-supplied payment ID there has no such cryptographic guarantee
   // and MUST be re-confirmed live against Razorpay.
   trustedPaymentStatus,
+  // Webhook only: reply to Razorpay right after the donation is marked
+  // success, and run DCC sync + receipt + WhatsApp in the background.
+  // Razorpay requires a 2xx within 5 seconds; that work takes longer.
+  deferPostCapture = false,
 }) => {
   // Absolute guard, enforced at the single choke point every caller
   // (webhook, /payment/verify, and the admin reconcile tool) goes
@@ -346,31 +383,13 @@ export const capturePaymentService = async ({
         },
       ).populate("templeDevoteInTouch", "phoneNumber");
     }
-    try {
-      const donationForSync = await Donation.findById(updatedDonation._id)
-        .populate("seva")
-        .populate({
-          path: "campaigner",
-          select: "templeDevoteInTouch",
-          populate: {
-            path: "templeDevoteInTouch",
-            select: "devoteeID",
-          },
-        });
-
-      if (donationForSync) {
-        const syncedDonation = await syncDonationWithDcc(
-          donationForSync,
-          gatewayPaymentId,
-        );
-
-        await sendDonationNotifications(syncedDonation, updatedCampaigner);
-      }
-    } catch (error) {
-      console.error(
-        "Payment captured but post-capture sync failed:",
-        error,
-      );
+    const postCapture = runPostCapture(
+      updatedDonation._id,
+      updatedCampaigner,
+      gatewayPaymentId,
+    );
+    if (!deferPostCapture) {
+      await postCapture;
     }
   }
 
