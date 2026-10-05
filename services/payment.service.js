@@ -253,7 +253,19 @@ export const capturePaymentService = async ({
     }
 
     if (!existingDonation.dccDataSentAt) {
-      await syncDonationWithDcc(existingDonation, gatewayPaymentId);
+      const dccSync = syncDonationWithDcc(existingDonation, gatewayPaymentId);
+      if (deferPostCapture) {
+        // Webhook: a repeat delivery must not wait on DCC (up to 20s);
+        // Razorpay needs a reply within 5 seconds.
+        dccSync.catch((error) =>
+          console.error(
+            `DCC sync failed for already-processed donation ${linkedDonationId}:`,
+            error,
+          ),
+        );
+      } else {
+        await dccSync;
+      }
     }
 
     return {
