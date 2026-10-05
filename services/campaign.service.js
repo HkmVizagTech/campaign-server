@@ -45,8 +45,24 @@ const syncCampaignStatuses = async (campaigns) => {
   }
 };
 
+const YOUTUBE_ID_PATTERN =
+  /(?:youtube\.com\/(?:shorts\/|watch\?(?:.*&)?v=|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
+
+// Accepts any YouTube video/Shorts link, or "" to remove the update video.
+const normalizeUpdateVideoUrl = (value) => {
+  if (value == null) return "";
+  if (typeof value !== "string") {
+    throw new AppError("Update video must be a YouTube link", 400);
+  }
+  const url = value.trim();
+  if (url && !YOUTUBE_ID_PATTERN.test(url)) {
+    throw new AppError("Update video must be a YouTube video or Shorts link", 400);
+  }
+  return url;
+};
+
 export const createCampaignService = async (req) => {
-  const { title, targetAmount, startDate, endDate } = req.body;
+  const { title, targetAmount, startDate, endDate, updateVideoUrl } = req.body;
 
   if (!title || !title.trim()) {
     throw new AppError("Title is required", 400);
@@ -94,6 +110,7 @@ export const createCampaignService = async (req) => {
     targetAmount,
     startDate,
     endDate,
+    updateVideoUrl: normalizeUpdateVideoUrl(updateVideoUrl),
   });
 
   campaign.calculateStatus();
@@ -217,6 +234,10 @@ export const updateCampaignService = async (req) => {
 
   delete updateData._id;
   delete updateData.startDate;
+
+  if ("updateVideoUrl" in updateData) {
+    updateData.updateVideoUrl = normalizeUpdateVideoUrl(updateData.updateVideoUrl);
+  }
 
   if (updateData.endDate) {
     const endDate = new Date(updateData.endDate);

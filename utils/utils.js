@@ -1,4 +1,61 @@
 import axios from "axios";
+import { AppError } from "./AppError.js";
+
+// Used whenever a donor does not give an email address, so DCC and the
+// receipt always have one.
+export const DEFAULT_DONOR_EMAIL =
+  process.env.DEFAULT_DONOR_EMAIL?.trim() || "donor@hkmvizag.org";
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export const resolveDonorEmail = (email) => {
+  const trimmed = typeof email === "string" ? email.trim().toLowerCase() : "";
+
+  if (!trimmed) return DEFAULT_DONOR_EMAIL;
+
+  if (!EMAIL_PATTERN.test(trimmed)) {
+    throw new AppError("Please enter a valid email address", 400);
+  }
+
+  return trimmed;
+};
+
+const HONOREE_MAX_LENGTH = 100;
+
+// "In honour of" dedication. Returns undefined when not provided.
+export const parseInHonorOf = (inHonorOf) => {
+  if (inHonorOf == null || inHonorOf === "") return undefined;
+
+  if (typeof inHonorOf !== "object" || Array.isArray(inHonorOf)) {
+    throw new AppError("inHonorOf must be an object with a name", 400);
+  }
+
+  const name = typeof inHonorOf.name === "string" ? inHonorOf.name.trim() : "";
+  const occasion =
+    typeof inHonorOf.occasion === "string" ? inHonorOf.occasion.trim() : "";
+
+  if (!name && !occasion) return undefined;
+
+  if (!name) {
+    throw new AppError("Name of the person being honoured is required", 400);
+  }
+
+  if (name.length > HONOREE_MAX_LENGTH || occasion.length > HONOREE_MAX_LENGTH) {
+    throw new AppError(
+      `In honour of name and occasion must be at most ${HONOREE_MAX_LENGTH} characters`,
+      400,
+    );
+  }
+
+  return occasion ? { name, occasion } : { name };
+};
+
+export const formatInHonorOf = (inHonorOf) => {
+  if (!inHonorOf?.name) return "";
+  return inHonorOf.occasion
+    ? `${inHonorOf.name} (${inHonorOf.occasion})`
+    : inHonorOf.name;
+};
 
 export const normalizePhoneNumber = (phoneNumber) => {
   const digits = phoneNumber?.replace(/\D/g, "");
@@ -24,7 +81,7 @@ export const dccApiService = async (
   const payload = {
     donorName: donation.donorName,
     donorPhone: donation.donorPhone,
-    donorEmail: donation?.donorEmail || null,
+    donorEmail: donation?.donorEmail || DEFAULT_DONOR_EMAIL,
     gender: null,
     address: {
       fullAddress: donation?.address?.fullAddress || null,

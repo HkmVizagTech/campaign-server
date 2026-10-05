@@ -39,6 +39,12 @@ const donationSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Optional dedication: the donation is made in honour of someone else
+    // (e.g. a parent, for a birthday or anniversary, or in memory of them).
+    inHonorOf: {
+      name: { type: String, trim: true, maxlength: 100 },
+      occasion: { type: String, trim: true, maxlength: 100 },
+    },
     address: {
       fullAddress: String,
       state: String,

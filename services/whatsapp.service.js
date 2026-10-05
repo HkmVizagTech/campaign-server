@@ -123,3 +123,41 @@ export const sendWhatsappMessage = async (phone,template, params = []) => {
     console.error("WhatsApp Error:", error.response?.data || error.message);
   }
 };
+
+// Like sendWhatsappMessage, but reports the outcome instead of swallowing
+// errors. Flaxxa returns HTTP 200 even when Meta rejects a message, so only
+// a message id counts as sent.
+export const sendWhatsappTemplateChecked = async (phone, template, params = []) => {
+  try {
+    const form = new FormData();
+    form.append("token", process.env.FLAXXA_TOKEN);
+    form.append("phone", phone);
+    form.append("template_name", template);
+    form.append("template_language", "en");
+    form.append(
+      "components",
+      JSON.stringify([{ type: "body", parameters: params }]),
+    );
+
+    const response = await axios.post(
+      "https://wapi.flaxxa.com/api/v1/sendtemplatemessage_withattachment",
+      form,
+      { headers: form.getHeaders(), timeout: 15000 },
+    );
+
+    const wamid = response.data?.message_wamid || response.data?.wamid;
+    if (!wamid) {
+      return {
+        ok: false,
+        error: JSON.stringify(response.data ?? null).slice(0, 200),
+      };
+    }
+
+    return { ok: true, wamid };
+  } catch (error) {
+    return {
+      ok: false,
+      error: JSON.stringify(error.response?.data ?? error.message).slice(0, 200),
+    };
+  }
+};

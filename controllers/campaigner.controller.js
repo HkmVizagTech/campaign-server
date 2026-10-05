@@ -5,6 +5,7 @@ import {
   getLastestDonorofCampaignerService,
   getSingleCampaignerService,
   getTopDonorsService,
+  resendCampaignerLinksService,
   updateCampaignerService,
 } from "../services/campaigner.service.js";
 import { asyncHandlers } from "../utils/handlers.js";
@@ -51,5 +52,11 @@ export const updateCampaigner = asyncHandlers(async (req, res) => {
 
 export const deleteCampaigner = asyncHandlers(async (req, res) => {
   const { status, message, data } = await deleteCampaignerService(req);
+  response(res, status, message, data);
+});
+
+export const resendCampaignerLinks = asyncHandlers(async (req, res) => {
+  const { status, message, data } = await resendCampaignerLinksService(req);
+
   response(res, status, message, data);
 });

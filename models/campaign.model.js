@@ -35,6 +35,14 @@ const campaignSchema = new mongoose.Schema(
       },
     },
 
+    // YouTube link (Short or regular video) shown as the monthly
+    // construction update on campaigner pages; empty hides the section.
+    updateVideoUrl: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
     status: {
       type: String,
       enum: ["upcoming", "active", "closed"],

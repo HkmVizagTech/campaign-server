@@ -55,7 +55,7 @@ iskcon-vizag-server/
 ├── routes/                 # API route definitions
 ├── scripts/                # Manual maintenance and recovery scripts
 ├── utils/                  # Response helpers, GCS upload, DCC integration
-├── receipt-template.pdf    # PDF template used for generated receipts
+├── assets/receipt/         # Logo and seal drawn on generated receipts
 ├── Dockerfile
 └── cloudbuild.yaml
 ```
@@ -147,6 +147,32 @@ Once running:
 
 The `scripts/` folder is for manual operational utilities that help recover or repair payment-related flows without changing the main API code path.
 
+### Verify All Pending Donations with Razorpay
+
+Checks every pending online donation (older than 30 minutes) against every
+Razorpay order made for it, including orders found by the donation id as the
+order receipt. Also available as **Admin → Reconcile Donations → Verify
+pending payments with Razorpay**.
+
+```bash
+npm run reconcile:pending                       # report only, changes nothing
+npm run reconcile:pending -- --apply            # settle the clear cases
+npm run reconcile:pending -- --apply --include-failed
+```
+
+| Razorpay shows | Result |
+| --- | --- |
+| exactly one captured payment for the full amount, not refunded | success via the normal capture flow (live re-check, totals credited once, DCC + receipt + WhatsApp) |
+| every attempt failed | marked failed; no receipt, WhatsApp or DCC |
+| no attempt, authorized only, amount mismatch, refund, two captures, API error | left unchanged and listed for manual review |
+
+`--include-failed` also re-checks failed donations; one is only ever moved to
+success, when Razorpay shows it was paid. Applying runs one donation at a
+time and is safe to re-run. Each run writes a CSV report to `tmp/` (contains
+donor details; not committed). Options: `--limit`, `--min-age <minutes>`,
+`--once`. Needs `DB_URL`, `RAZORPAY_API_KEY`, `RAZORPAY_KEY_SECRET` and the
+usual DCC/WhatsApp variables.
+
 ### Reconcile a Captured Donation
 
 Use this when Razorpay shows a payment as captured, but the server did not fully finish the post-payment flow. For example:
@@ -236,6 +262,7 @@ All routes below are mounted from `app.js`.
 - `GET /api/campaigner/topdonors/:campaignId` - top donors for a campaign
 - `GET /api/campaigner/latestDonors/:campaignId/:slug` - latest donors for a campaigner
 - `GET /api/campaigner/details/:slugId` - public campaigner detail page data
+- `POST /api/campaigner/resend-links` - admin: WhatsApp every approved campaigner their page link again (approval template); body `{ campaignId?, dryRun? }`
 - `GET /api/campaigner/:campaignId` - public campaigner list by campaign
 - `GET /api/campaigner/admin/:campaignId` - admin/devotee campaigner list with optional auth context
 - `PATCH /api/campaigner/:id` - update campaigner
@@ -339,19 +366,19 @@ The donation/payment lifecycle in the current code is:
 
 ## Receipt Generation
 
-Receipts are generated dynamically from `receipt-template.pdf` using `pdf-lib`.
+Receipts are drawn with `pdf-lib` (`services/receipt.service.js`) in the same
+layout DCC uses for its receipts: A4, Helvetica, with the logo and seal from
+`assets/receipt/`. Names in other scripts fall back to the Unicode font in
+`assets/fonts/` (subset, so only the glyphs used are embedded).
 
-The generated PDF fills fields such as:
+The receipt shows:
 
-- donor name
-- phone number
-- amount and amount in words
-- transaction date
-- address
-- PAN / 80G flag
-- email
-- gateway payment id
-- enrolled-by short form
+- DR number (DCC receipt number), date and patronship number
+- donor name, address, mobile, email (`DEFAULT_DONOR_EMAIL` when blank) and PAN / 80G flag
+- Sevak Name: the person the donation is made in honour of, if any
+- amount and amount in words (Indian numbering)
+- payment mode, gateway payment id / UPI reference and transaction date
+- enrolled-by / CDC short form and the seva it goes towards
 
 ## External Integrations
 
