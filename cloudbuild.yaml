@@ -30,6 +30,12 @@ steps:
       - ${_DEPLOY_REGION}
       - --platform
       - managed
+      # Keep one instance warm: a cold start alone can exceed Razorpay's
+      # 5-second webhook deadline.
+      - --min-instances=1
+      # Give CPU to work that runs after the response (DCC sync, receipt,
+      # WhatsApp after a webhook reply); throttled CPU would stall it.
+      - --no-cpu-throttling
       - --quiet
 
 images:
