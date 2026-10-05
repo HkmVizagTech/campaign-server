@@ -147,6 +147,32 @@ Once running:
 
 The `scripts/` folder is for manual operational utilities that help recover or repair payment-related flows without changing the main API code path.
 
+### Verify All Pending Donations with Razorpay
+
+Checks every pending online donation (older than 30 minutes) against every
+Razorpay order made for it, including orders found by the donation id as the
+order receipt. Also available as **Admin → Reconcile Donations → Verify
+pending payments with Razorpay**.
+
+```bash
+npm run reconcile:pending                       # report only, changes nothing
+npm run reconcile:pending -- --apply            # settle the clear cases
+npm run reconcile:pending -- --apply --include-failed
+```
+
+| Razorpay shows | Result |
+| --- | --- |
+| exactly one captured payment for the full amount, not refunded | success via the normal capture flow (live re-check, totals credited once, DCC + receipt + WhatsApp) |
+| every attempt failed | marked failed; no receipt, WhatsApp or DCC |
+| no attempt, authorized only, amount mismatch, refund, two captures, API error | left unchanged and listed for manual review |
+
+`--include-failed` also re-checks failed donations; one is only ever moved to
+success, when Razorpay shows it was paid. Applying runs one donation at a
+time and is safe to re-run. Each run writes a CSV report to `tmp/` (contains
+donor details; not committed). Options: `--limit`, `--min-age <minutes>`,
+`--once`. Needs `DB_URL`, `RAZORPAY_API_KEY`, `RAZORPAY_KEY_SECRET` and the
+usual DCC/WhatsApp variables.
+
 ### Reconcile a Captured Donation
 
 Use this when Razorpay shows a payment as captured, but the server did not fully finish the post-payment flow. For example:

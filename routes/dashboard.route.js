@@ -18,6 +18,7 @@ import Campaigner from "../models/campaigner.model.js";
 import mongoose from "mongoose";
 
 import razorpay from "../config/razorpay.js";
+import { reconcilePendingDonations } from "../services/reconcile.service.js";
 
 const dashboardRouter = express.Router();
 
@@ -584,6 +585,38 @@ dashboardRouter.post(
     );
 
     response(res, 200, result.message, updated);
+  }),
+);
+
+// Check pending online donations against Razorpay. apply:false only
+// reports; apply:true marks captured ones success (receipt sent) and
+// all-failed ones failed (nothing sent). Pass the donationIds from a report
+// to apply exactly what was reviewed; each is re-checked live first.
+dashboardRouter.post(
+  "/reconcile-pending",
+  verifyToken,
+  authorizeRole("admin", "superAdmin"),
+  asyncHandlers(async (req, res) => {
+    const { apply, donationIds, before, limit, includeFailed } = req.body ?? {};
+
+    if (apply === true && (!Array.isArray(donationIds) || donationIds.length === 0)) {
+      return response(res, 400, "Run a check first and apply its donationIds");
+    }
+
+    const result = await reconcilePendingDonations({
+      apply: apply === true,
+      donationIds,
+      before,
+      limit: Math.min(Number(limit) || 50, 100),
+      includeFailed: includeFailed === true,
+    });
+
+    response(
+      res,
+      200,
+      `${apply === true ? "Reconciled" : "Checked"} ${result.checked} pending donations`,
+      result,
+    );
   }),
 );
 
