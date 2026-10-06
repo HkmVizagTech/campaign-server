@@ -19,6 +19,7 @@ import mongoose from "mongoose";
 
 import razorpay from "../config/razorpay.js";
 import { reconcilePendingDonations } from "../services/reconcile.service.js";
+import WebhookLog from "../models/webhookLog.model.js";
 
 const dashboardRouter = express.Router();
 
@@ -617,6 +618,40 @@ dashboardRouter.post(
       `${apply === true ? "Reconciled" : "Checked"} ${result.checked} pending donations`,
       result,
     );
+  }),
+);
+
+// Razorpay webhook deliveries over the last 24 hours, for spotting a
+// misconfigured secret or URL before Razorpay disables the webhook.
+dashboardRouter.get(
+  "/webhook-health",
+  verifyToken,
+  authorizeRole("admin", "superAdmin"),
+  asyncHandlers(async (req, res) => {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const [recent, last24h, lastProcessed] = await Promise.all([
+      WebhookLog.find({}).sort({ receivedAt: -1 }).limit(30).lean(),
+      WebhookLog.find({ receivedAt: { $gte: since } }).select("outcome httpStatus").lean(),
+      WebhookLog.findOne({ outcome: { $in: ["ok", "already_processed"] } })
+        .sort({ receivedAt: -1 })
+        .select("receivedAt event paymentId")
+        .lean(),
+    ]);
+
+    const counts = {};
+    for (const row of last24h) counts[row.outcome || "unknown"] = (counts[row.outcome || "unknown"] || 0) + 1;
+
+    const secretsConfigured = (process.env.RAZORPAY_WEBHOOK_SECRET || "")
+      .split(",")
+      .filter((secret) => secret.trim()).length;
+
+    response(res, 200, "Webhook health", {
+      secretsConfigured,
+      lastReceivedAt: recent[0]?.receivedAt ?? null,
+      lastProcessed,
+      last24h: { total: last24h.length, counts },
+      recent,
+    });
   }),
 );
 
