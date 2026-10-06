@@ -18,8 +18,11 @@ const allowedOrigin = [
   "https://campaigner-client-y2d2.vercel.app",
 ];
 import webhookRouter from "./routes/webhook.route.js";
+// Razorpay's webhook is configured as /api/webhook/razorpay (singular); the
+// route was only ever mounted at /webhooks, so every delivery got a 404 and
+// Razorpay kept disabling the webhook. Serve both.
 app.use(
-  "/api/webhooks/razorpay",
+  ["/api/webhook/razorpay", "/api/webhooks/razorpay"],
   bodyParser.raw({ type: "*/*", limit: "1mb" }),
   webhookRouter,
 );
