@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import crypto from "crypto";
 import Payment from "../models/payment.model.js";
 import Donation from "../models/donation.model.js";
+import WebhookLog from "../models/webhookLog.model.js";
 import { capturePaymentService } from "./payment.service.js";
 
 const getWebhookBodyBuffer = (body) => {
@@ -26,13 +27,49 @@ const getWebhookBodyBuffer = (body) => {
   return Buffer.from("");
 };
 
+// RAZORPAY_WEBHOOK_SECRET may list several secrets separated by commas, so
+// the secret can be changed in Razorpay without a window of failures.
+const getWebhookSecrets = () =>
+  (process.env.RAZORPAY_WEBHOOK_SECRET || "")
+    .split(",")
+    .map((secret) => secret.trim())
+    .filter(Boolean);
+
+const signatureMatchesAny = (secrets, rawBody, receivedSignature) =>
+  secrets.some((secret) =>
+    isSignatureValid(
+      crypto.createHmac("sha256", secret).update(rawBody).digest("hex"),
+      receivedSignature,
+    ),
+  );
+
+// Records how each delivery was answered once the response has been sent;
+// never delays or breaks the reply.
+const recordDelivery = (req, res) => {
+  const startedAt = Date.now();
+  res.locals.webhook = {};
+  res.on("finish", () => {
+    const info = res.locals.webhook || {};
+    WebhookLog.create({
+      receivedAt: new Date(startedAt),
+      event: info.event,
+      paymentId: info.paymentId,
+      orderId: info.orderId,
+      outcome: info.outcome,
+      httpStatus: res.statusCode,
+      durationMs: Date.now() - startedAt,
+      error: info.error,
+    }).catch((error) => console.error("Could not record webhook delivery:", error.message));
+  });
+};
+
 const isSignatureValid = (expectedSignature, receivedSignature) => {
   if (!expectedSignature || !receivedSignature) {
     return false;
   }
 
   const expected = Buffer.from(expectedSignature, "hex");
-  const received = Buffer.from(receivedSignature, "hex");
+  const received = Buffer.from(String(receivedSignature).trim(), "hex");
 
   if (expected.length !== received.length) {
     return false;
@@ -117,43 +154,53 @@ const handleEvent = async (event) => {
   return "ignored";
 };
 
+// Every delivery is answered 2xx: Razorpay disables a webhook after a day of
+// failed deliveries, and nothing it could resend would fix a bad signature or
+// a missing secret. Those cases are logged loudly and shown under Webhook
+// health; payments they miss are still settled by /payment/verify and
+// Verify pending payments.
 export const razorpayWebhookService = async (req, res) => {
+  recordDelivery(req, res);
+  const ignore = (outcome, error) => {
+    res.locals.webhook = { ...res.locals.webhook, outcome, error };
+    return res.json({ status: outcome });
+  };
+
   try {
-    const secret = process.env.RAZORPAY_WEBHOOK_SECRET?.trim();
+    const secrets = getWebhookSecrets();
     const razorpaySignatureHeader = req.headers["x-razorpay-signature"];
     const razorpaySignature = Array.isArray(razorpaySignatureHeader)
       ? razorpaySignatureHeader[0]
       : razorpaySignatureHeader;
     const rawBody = getWebhookBodyBuffer(req.body);
 
-    if (!secret) {
-      console.error("Webhook error: missing RAZORPAY_WEBHOOK_SECRET");
-      return res.status(500).send("Webhook secret not configured");
+    if (secrets.length === 0) {
+      console.error("Webhook error: RAZORPAY_WEBHOOK_SECRET is not set; delivery ignored");
+      return ignore("not_configured", "RAZORPAY_WEBHOOK_SECRET is not set on the server");
     }
 
     if (!razorpaySignature) {
-      return res.status(400).send("Missing Razorpay signature");
+      return ignore("missing_signature", "No X-Razorpay-Signature header");
     }
 
     if (!rawBody.length) {
-      return res.status(400).send("Missing webhook body");
+      return ignore("missing_body", "Empty request body");
     }
 
-    const expectedSignature = crypto
-      .createHmac("sha256", secret)
-      .update(rawBody)
-      .digest("hex");
-
-    if (!isSignatureValid(expectedSignature, razorpaySignature)) {
-      console.error("Webhook error: invalid Razorpay signature", {
-        contentType: req.headers["content-type"],
-        bodyType: Buffer.isBuffer(req.body) ? "buffer" : typeof req.body,
-        bodyLength: rawBody.length,
-        secretLength: secret.length,
-        expectedSignaturePrefix: expectedSignature.substring(0, 8) + "...",
-        receivedSignaturePrefix: razorpaySignature.substring(0, 8) + "...",
-      });
-      return res.status(400).send("Invalid signature");
+    if (!signatureMatchesAny(secrets, rawBody, razorpaySignature)) {
+      console.error(
+        "Webhook error: invalid Razorpay signature — the webhook secret in Razorpay does not match RAZORPAY_WEBHOOK_SECRET",
+        {
+          contentType: req.headers["content-type"],
+          bodyType: Buffer.isBuffer(req.body) ? "buffer" : typeof req.body,
+          bodyLength: rawBody.length,
+          secretsConfigured: secrets.length,
+        },
+      );
+      return ignore(
+        "invalid_signature",
+        "Signature did not match: the webhook secret in Razorpay differs from RAZORPAY_WEBHOOK_SECRET",
+      );
     }
 
     let event;
@@ -161,10 +208,16 @@ export const razorpayWebhookService = async (req, res) => {
       event = JSON.parse(rawBody.toString("utf8"));
     } catch {
       console.error("Webhook: signed body is not valid JSON; acknowledged");
-      return res.json({ status: "ignored_malformed" });
+      return ignore("ignored_malformed", "Body is not valid JSON");
     }
 
-    const label = `${event.event} ${event.payload?.payment?.entity?.id || ""}`.trim();
+    const entity = event.payload?.payment?.entity;
+    res.locals.webhook = {
+      event: event.event,
+      paymentId: entity?.id,
+      orderId: entity?.order_id,
+    };
+    const label = `${event.event} ${entity?.id || ""}`.trim();
     const processing = handleEvent(event);
     let timer;
     const budget = new Promise((resolve) => {
@@ -176,11 +229,14 @@ export const razorpayWebhookService = async (req, res) => {
       status = await Promise.race([processing, budget]);
     } catch (error) {
       clearTimeout(timer);
+      res.locals.webhook.error = error?.message;
       if (isTransientError(error)) {
         console.error(`Webhook ${label}: database unavailable, asking Razorpay to retry:`, error);
+        res.locals.webhook.outcome = "retry";
         return res.status(503).json({ status: "retry" });
       }
       console.error(`Webhook ${label}: failed, acknowledged (retrying would not help):`, error);
+      res.locals.webhook.outcome = "error_logged";
       return res.json({ status: "error_logged" });
     }
 
@@ -193,9 +249,10 @@ export const razorpayWebhookService = async (req, res) => {
         .catch((error) => console.error(`Webhook ${label}: background processing failed:`, error));
     }
 
+    res.locals.webhook.outcome = status;
     return res.json({ status });
   } catch (error) {
     console.error("Webhook error:", error);
-    return res.status(500).json({ status: "error_logged" });
+    return ignore("error_logged", error?.message);
   }
 };
