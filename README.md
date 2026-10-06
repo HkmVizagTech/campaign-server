@@ -104,7 +104,7 @@ DCC_API=""
 - `GCS_CREDENTIALS`: stringified service account JSON; the code parses this value and restores newlines in `private_key`
 - `RAZORPAY_API_KEY`: public Razorpay key returned to the client when creating donation orders
 - `RAZORPAY_KEY_SECRET`: server-side Razorpay secret for signature verification
-- `RAZORPAY_WEBHOOK_SECRET`: used to validate `/api/webhooks/razorpay`
+- `RAZORPAY_WEBHOOK_SECRET`: used to validate `/api/webhook/razorpay` (also served at `/api/webhooks/razorpay`)
 - `JWT_SECRET`: signs and verifies auth tokens
 - `FLAXXA_TOKEN`: token for WhatsApp template message delivery
 - `DCC_API_KEY`: auth key for the downstream DCC API
@@ -302,7 +302,7 @@ Important donation fields supported in the code:
 
 ### Webhooks
 
-- `POST /api/webhooks/razorpay` - consumes Razorpay webhook events using raw body signature validation
+- `POST /api/webhook/razorpay` (or `/api/webhooks/razorpay`) - consumes Razorpay webhook events using raw body signature validation
 
 Handled events:
 
